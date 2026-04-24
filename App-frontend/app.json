@@ -2,6 +2,7 @@
   "expo": {
     "name": "Clear Dues",
     "slug": "cleardues",
+    "scheme": "cleardues",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
