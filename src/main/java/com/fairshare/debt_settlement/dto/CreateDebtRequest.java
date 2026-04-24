@@ -8,7 +8,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class CreateDebtRequest {
-    private String debtorEmail;
-    private String creditorEmail;
+    private String debtorPhone;
+    private String creditorPhone;
     private Double amount;
+    private String note;
 }

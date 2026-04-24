@@ -1,120 +1,108 @@
 import axios from 'axios';
+import authStorage from '../utils/authStorage';
 
-// Ensure this matches your testing environment. 
-const BASE_URL = 'https://pseudoviscous-holozoic-elian.ngrok-free.dev/api'; // Corrected Full URL 
+// BACKEND_URL provided by the user
+const BACKEND_URL = 'https://pseudoviscous-holozoic-elian.ngrok-free.dev';
+const API_BASE_URL = `${BACKEND_URL}/api`;
 
-const getClient = (token) => {
-  return axios.create({
-    baseURL: BASE_URL,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token && { 'Authorization': `Bearer ${token}` }),
-    },
-  });
-};
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Request Interceptor: Attach JWT token to every request
+api.interceptors.request.use(async (config) => {
+  const token = await authStorage.getToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+}, (error) => {
+  return Promise.reject(error);
+});
+
+// Response Interceptor: Handle auth errors (e.g., token expired)
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error.response && error.response.status === 401) {
+      // Logic for force logout can be added here
+      await authStorage.removeToken();
+    }
+    return Promise.reject(error);
+  }
+);
 
 export const apiService = {
-  // --- AUTH / PROFILE ---
-  getProfile: async (token) => {
-    try {
-      const response = await getClient(token).get('/profile');
-      return response.data;
-    } catch (error) {
-      console.error('Error fetching profile:', error);
-      throw error;
-    }
+  // Authentication Trigger URL
+  getAuthUrl: () => `${BACKEND_URL}/oauth2/authorization/google`,
+
+  // Profile
+  getProfile: async () => {
+    const response = await api.get('/profile');
+    return response.data;
   },
 
-  // --- PERSONS ---
-  getAllPersons: async (token) => {
-    try {
-      const response = await getClient(token).get('/persons');
-      return response.data;
-    } catch (error) {
-      console.error('Error fetching persons:', error);
-      throw error;
-    }
+  // Persons
+  getPersons: async () => {
+    const response = await api.get('/persons');
+    return response.data;
+  },
+  addPerson: async (payload) => {
+    const response = await api.post('/persons', payload);
+    return response.data;
+  },
+  checkPersonExists: async (phone) => {
+    const response = await api.get(`/persons/check?phone=${encodeURIComponent(phone)}`);
+    return response.data;
+  },
+  deletePerson: async (id) => {
+    await api.delete(`/persons/${id}`);
   },
 
-  addPerson: async (personData, token) => {
-    try {
-      const response = await getClient(token).post('/persons', personData);
-      return response.data;
-    } catch (error) {
-      console.error('Error adding person:', error);
-      throw error;
-    }
+  // Debts
+  getDebts: async () => {
+    const response = await api.get('/debts');
+    return response.data;
+  },
+  addDebt: async (debtData) => {
+    const response = await api.post('/debts', debtData);
+    return response.data;
+  },
+  updateDebt: async (id, debtData) => {
+    const response = await api.put(`/debts/${id}`, debtData);
+    return response.data;
+  },
+  deleteDebt: async (id) => {
+    await api.delete(`/debts/${id}`);
   },
 
-  updatePerson: async (personId, personData, token) => {
-    try {
-      const response = await getClient(token).put(`/persons/${personId}`, personData);
-      return response.data;
-    } catch (error) {
-      console.error('Error updating person:', error);
-      throw error;
-    }
+  // Settlements
+  getSettlements: async () => {
+    const response = await api.get('/settle');
+    return response.data;
   },
 
-  deletePerson: async (personId, token) => {
-    try {
-      await getClient(token).delete(`/persons/${personId}`);
-    } catch (error) {
-      console.error('Error deleting person:', error);
-      throw error;
-    }
+  // Phone Support
+  updateProfilePhone: async (phone) => {
+    const response = await api.put('/persons/me/phone', { phone });
+    return response.data;
   },
-
-  // --- DEBTS ---
-  getAllDebts: async (token) => {
-    try {
-      const response = await getClient(token).get('/debts');
-      return response.data;
-    } catch (error) {
-      console.error('Error fetching debts:', error);
-      throw error;
-    }
+  syncBatchContacts: async (contacts) => {
+    const response = await api.post('/persons/sync-batch', contacts);
+    return response.data;
   },
-
-  addDebt: async (debtData, token) => {
-    // debtData should now contain debtorEmail, creditorEmail, and amount
-    try {
-      const response = await getClient(token).post('/debts', debtData);
-      return response.data;
-    } catch (error) {
-      console.error('Error adding debt:', error);
-      throw error;
-    }
+  checkBatchContacts: async (phoneNumbers) => {
+    const response = await api.post('/persons/check-contacts', phoneNumbers);
+    return response.data;
   },
-
-  updateDebt: async (debtId, debtData, token) => {
-    try {
-      const response = await getClient(token).put(`/debts/${debtId}`, debtData);
-      return response.data;
-    } catch (error) {
-      console.error('Error updating debt:', error);
-      throw error;
-    }
+  completeSettlement: async () => {
+    const response = await api.post('/settle/complete');
+    return response.data;
   },
-
-  deleteDebt: async (debtId, token) => {
-    try {
-      await getClient(token).delete(`/debts/${debtId}`);
-    } catch (error) {
-      console.error('Error deleting debt:', error);
-      throw error;
-    }
-  },
-
-  settleDebts: async (token) => {
-    try {
-      const response = await getClient(token).get('/settle');
-      return response.data;
-    } catch (error) {
-      console.error('Error settling debts:', error);
-      throw error;
-    }
-  }
 };
 
 export default apiService;
+export { BACKEND_URL };

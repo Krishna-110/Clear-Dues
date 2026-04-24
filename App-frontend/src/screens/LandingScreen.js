@@ -1,110 +1,292 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Dimensions, Linking, Alert } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions, Animated, SafeAreaView, ActivityIndicator } from 'react-native';
 import { Theme } from '../theme/Theme';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { ChevronRight } from 'lucide-react-native';
+import * as WebBrowserInstance from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 import apiService from '../services/apiService';
+import { useStore } from '../store/useStore';
+
+// Required for Auth Session handling
+WebBrowserInstance.maybeCompleteAuthSession();
 
 const { width, height } = Dimensions.get('window');
 
-const LandingScreen = ({ navigation }) => {
+const LandingScreen = () => {
+  const navigation = useNavigation();
+  const { setAuthenticated, checkAuth, isAuthenticated } = useStore();
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+
+  // Animations
+  const blob1Anim = useRef(new Animated.Value(0)).current;
+  const blob2Anim = useRef(new Animated.Value(0)).current;
+  const contentFade = useRef(new Animated.Value(0)).current;
+  const contentMove = useRef(new Animated.Value(20)).current;
+
   useEffect(() => {
-    // 1. Handle deep link when the app is already open
-    const subscription = Linking.addEventListener('url', handleDeepLink);
+    // Check if already authenticated on mount
+    checkAuth();
+    
+    // Content entrance
+    Animated.parallel([
+      Animated.timing(contentFade, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+      }),
+      Animated.timing(contentMove, {
+        toValue: 0,
+        duration: 1000,
+        useNativeDriver: true,
+      }),
+    ]).start();
 
-    // 2. Handle deep link when the app is launched from a closed state
-    Linking.getInitialURL().then((url) => {
-      if (url) handleDeepLink({ url });
-    });
-
-    return () => {
-      if (subscription) subscription.remove();
+    // Floating blobs animation
+    const createLoop = (anim, toValue) => {
+      return Animated.loop(
+        Animated.sequence([
+          Animated.timing(anim, {
+            toValue,
+            duration: 4000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(anim, {
+            toValue: 0,
+            duration: 4000,
+            useNativeDriver: true,
+          }),
+        ])
+      );
     };
+
+    createLoop(blob1Anim, 20).start();
+    createLoop(blob2Anim, -20).start();
   }, []);
 
-  const handleDeepLink = async ({ url }) => {
-    console.log('Deep link received:', url);
-    if (!url) return;
+  // Redirect to Main if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigation.navigate('Main');
+    }
+  }, [isAuthenticated]);
 
-    // Check if the URL contains the token
-    const token = url.split('token=')[1];
-    if (token) {
-      try {
-        // Save the token for persistent login!
-        await SecureStore.setItemAsync('userToken', token);
-        
-        // Fetch the profile to confirm identity and get the user object
-        const user = await apiService.getProfile(token);
-        // Success! Go to the Dashboard
-        navigation.replace('MainTabs', { token, user });
-      } catch (error) {
-        console.error('Failed to fetch profile after login:', error);
-        Alert.alert('Login Error', 'Failed to complete login. Please try again.');
+  const handleGetStarted = async () => {
+    if (isAuthenticating) return;
+    
+    setIsAuthenticating(true);
+    const authUrl = apiService.getAuthUrl();
+    
+    try {
+      const result = await WebBrowserInstance.openAuthSessionAsync(authUrl);
+      
+      if (result.type === 'success' && result.url) {
+        handleRedirect(result.url);
       }
+    } catch (error) {
+      console.error('Auth error', error);
+    } finally {
+      setIsAuthenticating(false);
     }
   };
 
-  const handleGoogleLogin = () => {
-    // Point to your public ngrok tunnel (Full URL)
-    const authUrl = 'https://pseudoviscous-holozoic-elian.ngrok-free.dev/oauth2/authorization/google';
-    Linking.openURL(authUrl);
+  const handleRedirect = (url) => {
+    try {
+      const { queryParams } = Linking.parse(url);
+      if (queryParams && queryParams.token) {
+        setAuthenticated(queryParams.token);
+        navigation.navigate('Main');
+      }
+    } catch (err) {
+      console.error('Redirect parse error', err);
+    }
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.backgroundGlow} />
-      
+      {/* Background Blobs */}
+      <Animated.View 
+        style={[
+          styles.blob, 
+          styles.blob1, 
+          { transform: [{ translateY: blob1Anim }, { translateX: blob1Anim }] }
+        ]} 
+      />
+      <Animated.View 
+        style={[
+          styles.blob, 
+          styles.blob2, 
+          { transform: [{ translateY: blob2Anim }, { translateX: blob2Anim }] }
+        ]} 
+      />
+
       <View style={styles.content}>
-        <View style={styles.logoContainer}>
-          <MaterialCommunityIcons name="lightning-bolt" size={48} color={Theme.colors.secondary} />
-          <Text style={styles.logoText}>FairShare</Text>
-        </View>
+        <Animated.View style={[styles.mainContainer, { opacity: contentFade, transform: [{ translateY: contentMove }] }]}>
+          <View style={styles.logoContainer}>
+            <Image 
+              source={require('../../assets/logo.png')} 
+              style={styles.logo}
+              resizeMode="contain"
+            />
+          </View>
 
-        <View style={styles.textGroup}>
-          <Text style={styles.title}>Finance,{"\n"}Simplified.</Text>
-          <Text style={styles.subtitle}>
-            Balance your life, fairly. Track, settle, and optimize your debts with precision.
-          </Text>
-        </View>
+          <View style={styles.textContainer}>
+            <Text style={styles.title}>Clear Dues</Text>
+            <View style={styles.pillTag}>
+              <Text style={styles.pillText}>SMART SETTLEMENTS</Text>
+            </View>
+            <Text style={styles.subtitle}>
+              Track, manage, and settle shared expenses with zero stress. The professional way to stay square.
+            </Text>
+          </View>
 
-        <View style={styles.buttonGroup}>
-          <TouchableOpacity 
-            style={styles.primaryButton}
-            onPress={handleGoogleLogin}
-          >
-            <Text style={styles.buttonText}>Get Started</Text>
-            <MaterialCommunityIcons name="arrow-right" size={20} color={Theme.colors.white} />
-          </TouchableOpacity>
+          <View style={styles.buttonWrapper}>
+            <TouchableOpacity 
+              activeOpacity={0.9}
+              style={[
+                styles.button, 
+                Theme.shadow.medium,
+                isAuthenticating && { opacity: 0.7 }
+              ]}
+              onPress={handleGetStarted}
+              disabled={isAuthenticating}
+            >
+              <Text style={styles.buttonText}>
+                {isAuthenticating ? 'Authenticating...' : 'Get Started'}
+              </Text>
+              <View style={styles.buttonIcon}>
+                {isAuthenticating ? (
+                  <ActivityIndicator size="small" color={Theme.colors.white} />
+                ) : (
+                  <ChevronRight size={18} color={Theme.colors.white} />
+                )}
+              </View>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      </View>
 
-          <TouchableOpacity 
-            style={[styles.primaryButton, styles.googleButton]}
-            onPress={handleGoogleLogin}
-          >
-            <MaterialCommunityIcons name="google" size={20} color={Theme.colors.white} style={{ marginRight: 8 }} />
-            <Text style={styles.buttonText}>Login with Google</Text>
-          </TouchableOpacity>
-        </View>
-
-        <Text style={styles.tagline}>Smart settling, better relationships.</Text>
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>MODERN • SECURE • SIMPLE</Text>
       </View>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Theme.colors.background, justifyContent: 'center' },
-  backgroundGlow: { position: 'absolute', top: -height * 0.1, right: -width * 0.2, width: width * 1.2, height: width * 1.2, borderRadius: width * 0.6, backgroundColor: Theme.colors.primary, opacity: 0.15, transform: [{ scale: 1.5 }] },
-  content: { paddingHorizontal: Theme.spacing.lg, flex: 1, justifyContent: 'space-between', paddingVertical: Theme.spacing.xxl },
-  logoContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: Theme.spacing.xxl },
-  logoText: { fontSize: 28, fontWeight: '800', color: Theme.colors.text, marginLeft: Theme.spacing.sm, letterSpacing: -1 },
-  textGroup: { marginTop: Theme.spacing.xxl },
-  title: { fontSize: 56, fontWeight: '900', color: Theme.colors.text, lineHeight: 64, letterSpacing: -2 },
-  subtitle: { fontSize: 18, color: Theme.colors.textSecondary, marginTop: Theme.spacing.md, lineHeight: 28 },
-  buttonGroup: { marginTop: Theme.spacing.xxl },
-  primaryButton: { backgroundColor: Theme.colors.primary, paddingVertical: Theme.spacing.lg, paddingHorizontal: Theme.spacing.xl, borderRadius: Theme.borderRadius.xl, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: Theme.spacing.md },
-  googleButton: { backgroundColor: '#DB4437' }, // Google Red
-  buttonText: { color: Theme.colors.white, fontSize: 18, fontWeight: '700', marginRight: Theme.spacing.sm },
-  tagline: { textAlign: 'center', color: Theme.colors.textSecondary, fontSize: 14, fontWeight: '500', opacity: 0.6 }
+  container: {
+    flex: 1,
+    backgroundColor: Theme.colors.white,
+  },
+  blob: {
+    position: 'absolute',
+    borderRadius: 200,
+    opacity: 0.08,
+  },
+  blob1: {
+    width: 300,
+    height: 300,
+    backgroundColor: Theme.colors.primary,
+    top: -50,
+    right: -50,
+  },
+  blob2: {
+    width: 250,
+    height: 250,
+    backgroundColor: Theme.colors.secondary,
+    bottom: 50,
+    left: -50,
+  },
+  content: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Theme.spacing.xl,
+  },
+  mainContainer: {
+    alignItems: 'center',
+    width: '100%',
+  },
+  logoContainer: {
+    width: 200,
+    height: 200,
+    marginBottom: Theme.spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logo: {
+    width: '100%',
+    height: '100%',
+  },
+  textContainer: {
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  title: {
+    fontSize: 48,
+    fontWeight: '900',
+    color: Theme.colors.text,
+    letterSpacing: -1.5,
+    marginBottom: 8,
+  },
+  pillTag: {
+    backgroundColor: Theme.colors.primary + '10',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 20,
+    marginBottom: 20,
+  },
+  pillText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: Theme.colors.primary,
+    letterSpacing: 1,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: Theme.colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 24,
+    paddingHorizontal: Theme.spacing.md,
+  },
+  buttonWrapper: {
+    width: '100%',
+    paddingHorizontal: Theme.spacing.md,
+  },
+  button: {
+    backgroundColor: Theme.colors.text,
+    height: 64,
+    borderRadius: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingLeft: 24,
+    paddingRight: 8,
+  },
+  buttonText: {
+    color: Theme.colors.white,
+    fontSize: 18,
+    fontWeight: '700',
+    marginRight: 12,
+  },
+  buttonIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  footer: {
+    alignItems: 'center',
+    paddingBottom: Theme.spacing.xl,
+  },
+  footerText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Theme.colors.textSecondary,
+    letterSpacing: 2,
+  },
 });
 
 export default LandingScreen;

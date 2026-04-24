@@ -1,15 +1,22 @@
 export const Theme = {
   colors: {
     primary: '#4F46E5', // Indigo
-    secondary: '#10B981', // Teal (Receivables)
-    accent: '#F59E0B', // Amber (Payables)
-    background: '#0B0F1A', // Deep Dark Blue/Charcoal
-    surface: '#1E293B', // Slate
-    border: '#334155',
-    text: '#F8FAFC',
-    textSecondary: '#94A3B8',
+    secondary: '#10B981', // Emerald
+    success: '#10B981', // Success (Match Emerald)
+    accent: '#F59E0B', // Amber
+    danger: '#EF4444', // Red
+    background: '#FFFFFF',
+    surface: '#F9FAFB',
+    text: '#111827',
+    textSecondary: '#6B7280',
+    border: '#E5E7EB',
     white: '#FFFFFF',
-    error: '#EF4444',
+    card: '#FFFFFF',
+    
+    // Gradients / Semantic
+    owe: '#EF4444',
+    get: '#10B981',
+    neutral: '#4F46E5',
   },
   spacing: {
     xs: 4,
@@ -17,12 +24,28 @@ export const Theme = {
     md: 16,
     lg: 24,
     xl: 32,
-    xxl: 48,
   },
   borderRadius: {
     sm: 8,
     md: 12,
-    lg: 20,
-    xl: 28,
+    lg: 16,
+    xl: 24,
+    full: 9999,
   },
+  shadow: {
+    light: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 10,
+      elevation: 2,
+    },
+    medium: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.1,
+      shadowRadius: 15,
+      elevation: 5,
+    },
+  }
 };

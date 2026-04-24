@@ -20,8 +20,8 @@ public class PersonController {
 
     // POST /api/persons - Add a new person
     @PostMapping
-    public ResponseEntity<Person> addPerson(@RequestBody Person person) {
-        Person savedPerson = personService.addPerson(person);
+    public ResponseEntity<Person> addPerson(@RequestBody com.fairshare.debt_settlement.dto.CreatePersonRequest request) {
+        Person savedPerson = personService.addPerson(request);
         return ResponseEntity.ok(savedPerson);
     }
 
@@ -36,5 +36,47 @@ public class PersonController {
     public ResponseEntity<String> deletePerson(@PathVariable Long id) {
         personService.deletePerson(id);
         return ResponseEntity.ok("Person deleted successfully");
+    }
+
+    // GET /api/persons/check?phone=...
+    @GetMapping("/check")
+    public ResponseEntity<?> checkPersonExists(@RequestParam String phone) {
+        String normalized = personService.normalizePhoneNumber(phone);
+        return personService.personRepository.findByPhoneNumber(normalized)
+                .map(p -> ResponseEntity.ok(java.util.Map.of("exists", true, "name", p.getName())))
+                .orElse(ResponseEntity.ok(java.util.Map.of("exists", false)));
+    }
+
+    // PUT /api/persons/me/phone
+    @PutMapping("/me/phone")
+    public ResponseEntity<Person> updateMyPhone(@RequestBody java.util.Map<String, String> body) {
+        return ResponseEntity.ok(personService.updateMyPhone(body.get("phone")));
+    }
+
+    // POST /api/persons/check-contacts
+    @PostMapping("/check-contacts")
+    public ResponseEntity<List<java.util.Map<String, Object>>> checkBatchContacts(@RequestBody List<String> phoneNumbers) {
+        return ResponseEntity.ok(personService.checkContacts(phoneNumbers));
+    }
+
+    // POST /api/persons/sync-batch
+    @PostMapping("/sync-batch")
+    public ResponseEntity<List<Person>> syncBatchContacts(@RequestBody List<com.fairshare.debt_settlement.dto.CreatePersonRequest> contacts) {
+        return ResponseEntity.ok(personService.syncContactsBatch(contacts));
+    }
+
+    // GET /api/persons/profile (Utility to check current user state)
+    @GetMapping("/profile")
+    public ResponseEntity<Person> getProfile() {
+        // getCurrentUser is private in service, but we can access it via Repository if needed
+        // Or better, add a getProfile method to service
+        Object principal = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        String email;
+        if (principal instanceof org.springframework.security.core.userdetails.UserDetails) {
+            email = ((org.springframework.security.core.userdetails.UserDetails) principal).getUsername();
+        } else {
+            email = principal.toString();
+        }
+        return ResponseEntity.ok(personService.personRepository.findByEmail(email).orElseThrow());
     }
 }

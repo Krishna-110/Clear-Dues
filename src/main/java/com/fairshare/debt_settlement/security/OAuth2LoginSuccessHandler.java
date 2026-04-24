@@ -47,6 +47,9 @@ public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHan
         String token = jwtService.generateToken(person.getEmail());
 
         // 4. Build the Deep Link to open the Flutter app and pass the token securely
+        if (frontendRedirectUri == null) {
+            throw new IllegalStateException("frontendRedirectUri is not configured");
+        }
         String targetUrl = UriComponentsBuilder.fromUriString(frontendRedirectUri)
                 .queryParam("token", token)
                 .build().toUriString();

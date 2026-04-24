@@ -1,348 +1,529 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  ActivityIndicator, 
-  Dimensions,
-  RefreshControl,
-  TouchableOpacity,
-  Alert
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { PieChart } from 'react-native-chart-kit';
-import * as SecureStore from 'expo-secure-store';
+import React, { useEffect, useCallback, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, SafeAreaView, TouchableOpacity, Modal, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { useStore } from '../store/useStore';
 import { Theme } from '../theme/Theme';
-import apiService from '../services/apiService';
+import SummaryCard from '../components/SummaryCard';
+import DonutChart from '../components/DonutChart';
 import TransactionCard from '../components/TransactionCard';
-import AddDebtModal from '../components/AddDebtModal';
-import EditDebtModal from '../components/EditDebtModal';
+import { Bell, HandCoins, LogOut, CheckCircle } from 'lucide-react-native';
+import PhoneOnboardingModal from '../components/PhoneOnboardingModal';
+import { requestContactPermission } from '../services/ContactService';
 
-const screenWidth = Dimensions.get('window').width;
-
-const DashboardScreen = ({ navigation, route }) => {
-  const { token, user } = route.params;
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [debts, setDebts] = useState([]);
-  const [persons, setPersons] = useState([]);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [editModalVisible, setEditModalVisible] = useState(false);
-  const [selectedTransaction, setSelectedTransaction] = useState(null);
-
-  const fetchData = async () => {
-    try {
-      const debtsData = await apiService.getAllDebts(token);
-      setDebts(debtsData);
-      
-      const personsData = await apiService.getAllPersons(token);
-      setPersons(personsData);
-    } catch (error) {
-      console.error('Fetch error:', error);
-      if (error.response?.status === 401) {
-        Alert.alert('Session Expired', 'Please login again.');
-        handleLogout(true); // Forced logout
-      }
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+const DashboardScreen = ({ navigation }) => {
+  const { debts, settlements, fetchData, logout, isLoading, user, updateDebt, deleteDebt } = useStore();
+  
+  const [selectedDebt, setSelectedDebt] = useState(null);
+  const [editAmount, setEditAmount] = useState('');
+  const [editNote, setEditNote] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPhoneModal, setShowPhoneModal] = useState(false);
 
   useEffect(() => {
-    if (token) {
-      fetchData();
-    }
-  }, [token]);
-
-  const onRefresh = () => {
-    setRefreshing(true);
     fetchData();
-  };
+  }, [fetchData]);
 
-  const handleEditClick = (transaction) => {
-    setSelectedTransaction(transaction);
-    setEditModalVisible(true);
-  };
-
-  const handleDeleteDebt = (id) => {
-    Alert.alert(
-      'Delete Record',
-      'Are you sure you want to delete this debt? This will update everyone\'s balance.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Delete', 
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await apiService.deleteDebt(id, token);
-              fetchData(); // Refresh data
-            } catch (error) {
-              Alert.alert('Error', 'Failed to delete record.');
-            }
-          }
-        }
-      ]
-    );
-  };
-
-  const handleLogout = (forced = false) => {
-    const performLogout = async () => {
-      // Clear persistence!
-      await SecureStore.deleteItemAsync('userToken');
-      
-      // Reset navigation to Landing and clear history
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Landing' }],
-      });
-    };
-
-    if (forced) {
-       performLogout();
-       return;
+  useEffect(() => {
+    // Show phone onboarding if user is logged in but has no phone number
+    if (user && !user.phoneNumber && !isLoading) {
+      setShowPhoneModal(true);
+    } else if (user && user.phoneNumber && !isLoading) {
+      setShowPhoneModal(false);
+      // Automatically ask for contact permission once phone is setup
+      requestContactPermission();
     }
+  }, [user, isLoading]);
 
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Logout', 
-          style: 'destructive',
-          onPress: performLogout
-        }
-      ]
-    );
+  const onRefresh = useCallback(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const openEditModal = (debt) => {
+    setSelectedDebt(debt);
+    setEditAmount(debt.amount.toString());
+    setEditNote(debt.note || '');
   };
 
-  if (loading && !refreshing) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color={Theme.colors.primary} />
-      </View>
-    );
-  }
-
-  const totalSystemDebt = debts.reduce((sum, d) => sum + d.amount, 0);
-  
-  // Calculate Personal Balances for the Chart (Case-Insensitive)
-  const personalEmail = user?.email?.toLowerCase();
-  
-  const totalOwe = debts
-    .filter(d => d.debtor?.email?.toLowerCase() === personalEmail)
-    .reduce((sum, d) => sum + d.amount, 0);
+  const handleUpdate = async () => {
+    if (!selectedDebt || !editAmount || isNaN(parseFloat(editAmount))) {
+      Alert.alert('Invalid', 'Please enter a valid amount.');
+      return;
+    }
     
-  const totalReceive = debts
-    .filter(d => d.creditor?.email?.toLowerCase() === personalEmail)
-    .reduce((sum, d) => sum + d.amount, 0);
-
-  const netBalance = totalReceive - totalOwe;
-  const hasData = totalOwe > 0 || totalReceive > 0;
-  
-  const chartData = [
-    {
-      name: 'Receive',
-      amount: totalReceive || (hasData ? 0 : 1),
-      color: Theme.colors.secondary,
-    },
-    {
-      name: 'Owe',
-      amount: totalOwe || (hasData ? 0 : 1),
-      color: Theme.colors.accent,
+    setIsSubmitting(true);
+    try {
+      await updateDebt(selectedDebt.id, {
+        debtorPhone: selectedDebt.debtor.phoneNumber,
+        creditorPhone: selectedDebt.creditor.phoneNumber,
+        amount: parseFloat(editAmount),
+        note: editNote
+      });
+      setSelectedDebt(null);
+      Alert.alert('Success', 'Transaction updated!');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to update transaction.');
+    } finally {
+      setIsSubmitting(false);
     }
-  ];
+  };
+
+  const handleDelete = () => {
+    if (!selectedDebt) return;
+    Alert.alert('Confirm Delete', 'Are you sure you want to delete this transaction?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+          setIsSubmitting(true);
+          try {
+            await deleteDebt(selectedDebt.id);
+            setSelectedDebt(null);
+          } catch(err) {} finally { setIsSubmitting(false); }
+      }}
+    ]);
+  };
+
+  // Document-Aligned Calculations based on Current User
+  // EXCLUDE 'Automated Settlement Result' to avoid doubling volume when debts migrate
+  const userTotalDebts = debts
+    .filter(d => 
+      (d.debtor?.phoneNumber === user?.phoneNumber || d.creditor?.phoneNumber === user?.phoneNumber) && 
+      !d.note?.includes('Automated Settlement Result') && 
+      !d.note?.includes('Settled via Optimization')
+    )
+    .reduce((acc, d) => acc + d.amount, 0);
+    
+  // Optimized Pending Amount (The 'Real' money outstanding)
+  const totalOwe = settlements
+    .filter(s => s.fromPhone === user?.phoneNumber)
+    .reduce((acc, s) => acc + s.amount, 0);
+    
+  const totalGet = settlements
+    .filter(s => s.toPhone === user?.phoneNumber)
+    .reduce((acc, s) => acc + s.amount, 0);
+
+  const pendingAmount = Math.abs(totalGet - totalOwe);
+  const netBalance = totalGet - totalOwe;
+    
+  // Total Settled = Original Volume - Current Pending
+  const totalSettled = Math.max(0, userTotalDebts - pendingAmount);
+
+  // Success Indicator: If user has PENDING records but their NET impact is 0
+  const hasRawPending = debts.some(d => (d.debtor?.phoneNumber === user?.phoneNumber || d.creditor?.phoneNumber === user?.phoneNumber) && d.status === 'PENDING');
+  const isAllSquared = hasRawPending && totalOwe === 0 && totalGet === 0;
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView 
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Theme.colors.primary} />}
-      >
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.welcomeText}>Welcome back,</Text>
-            <Text style={styles.userName}>{(user && user.name) ? user.name.split(' ')[0] : 'User'}</Text>
+      {/* AppBar: Title "Debt Settlement" per document */}
+      <View style={styles.header}>
+        <View style={styles.headerContent}>
+          <View style={styles.titleRow}>
+            <HandCoins size={24} color={Theme.colors.primary} />
+            <Text style={styles.headerTitle}>Debt Settlement</Text>
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity 
-              style={styles.logoutButton}
-              onPress={handleLogout}
-            >
-              <MaterialCommunityIcons name="logout" size={24} color={Theme.colors.primary} />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <View style={styles.balanceCard}>
-           <View style={styles.balanceHeader}>
-              <View style={styles.iconCircle}>
-                <MaterialCommunityIcons name="bank" size={24} color={Theme.colors.white} />
-              </View>
-              <Text style={styles.balanceLabel}>Total System Debt</Text>
-           </View>
-           <Text style={styles.balanceAmount}>
-             ₹{totalSystemDebt.toFixed(2)}
-           </Text>
-        </View>
-
-        {/* Analytics Section - THE DONUT HERO */}
-        <View style={styles.chartContainer}>
-          <Text style={styles.sectionTitle}>Real-time Standing</Text>
-          
-          <View style={styles.donutWrapper}>
-            <PieChart
-              data={chartData}
-              width={screenWidth - 48}
-              height={200}
-              chartConfig={{
-                color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-                propsForLabels: { fontSize: 0 }
+              style={[styles.iconButton, { marginRight: Theme.spacing.xs }]} 
+              onPress={() => {
+                logout();
               }}
-              accessor={"amount"}
-              backgroundColor={"transparent"}
-              paddingLeft={screenWidth / 4 - 20} // Numeric calculation for better centering
-              hasLegend={false} // Custom legend used instead
+            >
+              <LogOut size={20} color={Theme.colors.danger} />
+            </TouchableOpacity>
+            <View style={styles.iconButton}>
+              <Bell size={20} color={Theme.colors.text} />
+              <View style={styles.notificationBadge} />
+            </View>
+          </View>
+        </View>
+      </View>
+
+      <ScrollView 
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={isLoading} onRefresh={onRefresh} tintColor={Theme.colors.primary} />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Active Balances Section */}
+        <View style={styles.greetSection}>
+          <Text style={styles.greetText}>Welcome, {user?.name?.split(' ')[0] || 'User'}! 👋</Text>
+          <Text style={styles.nameText}>Active Balances</Text>
+        </View>
+
+        {/* Hero Section - Donut Chart Kept as requested */}
+        <View style={styles.heroSection}>
+          <DonutChart owe={totalOwe} get={totalGet} net={netBalance} />
+        </View>
+
+        {/* Summary Cards Row - Aligned with Widget Tree Document */}
+        <View style={styles.summaryGrid}>
+          <View style={styles.summaryRow}>
+            <SummaryCard title="Total Debts" amount={userTotalDebts} type="get" />
+            <SummaryCard title="Total Settled" amount={totalSettled} type="neutral" />
+          </View>
+        </View>
+
+        {/* Recent Activity Section */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Recent Activity</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Settlements')}>
+            <Text style={styles.sectionAction}>View All</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.settlementList}>
+          {settlements
+            .filter(s => s.fromPhone === user?.phoneNumber || s.toPhone === user?.phoneNumber)
+            .slice(0, 5)
+            .map((s, index) => (
+            <TransactionCard 
+              key={index}
+              debtor={s.from}
+              creditor={s.to}
+              amount={s.amount}
+              status="PENDING" // Settlements are always pending suggestions
             />
-            {/* The Donut Hole */}
-            <View style={styles.donutHole}>
-              <Text style={styles.netAmount}>
-                {netBalance >= 0 ? '+' : ''}₹{Math.abs(netBalance).toFixed(0)}
-              </Text>
-              <Text style={styles.netLabel}>Net Balance</Text>
-            </View>
-          </View>
+          ))}
 
-          {/* Custom Legend */}
-          <View style={styles.customLegend}>
-            <View style={styles.legendItem}>
-              <View style={[styles.dot, { backgroundColor: Theme.colors.secondary }]} />
-              <Text style={styles.legendText}>Receiving: ₹{totalReceive.toFixed(0)}</Text>
+          {settlements.length === 0 && (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No recent activity found.</Text>
             </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.dot, { backgroundColor: Theme.colors.accent }]} />
-              <Text style={styles.legendText}>Paying: ₹{totalOwe.toFixed(0)}</Text>
-            </View>
-          </View>
+          )}
         </View>
 
-        <View style={styles.row}>
-          <View style={styles.miniCard}>
-            <MaterialCommunityIcons name="account-group" size={20} color={Theme.colors.primary} />
-            <Text style={styles.miniLabel}>Persons</Text>
-            <Text style={styles.miniAmount}>{persons.length}</Text>
-          </View>
-          <View style={styles.miniCard}>
-            <MaterialCommunityIcons name="swap-horizontal" size={20} color={Theme.colors.secondary} />
-            <Text style={styles.miniLabel}>Transactions</Text>
-            <Text style={styles.miniAmount}>{debts.length}</Text>
-          </View>
-        </View>
-
-        <View style={styles.transactionsHeader}>
-          <Text style={styles.sectionTitle}>Your Activities</Text>
-          <TouchableOpacity 
-            style={styles.settleButton}
-            onPress={() => navigation.navigate('Settle Up', { user })}
-          >
-            <MaterialCommunityIcons name="auto-fix" size={16} color={Theme.colors.primary} />
-            <Text style={styles.settleButtonText}>Settle Up</Text>
+        {/* Transaction History Section */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Transaction History</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('History')}>
+            <Text style={styles.sectionAction}>View All</Text>
           </TouchableOpacity>
         </View>
         
-        {(() => {
-          const userDebts = debts.filter(d => 
-            d.debtor?.email?.toLowerCase() === personalEmail || 
-            d.creditor?.email?.toLowerCase() === personalEmail
-          );
-
-          return userDebts.length > 0 ? (
-            userDebts.map((item, index) => (
+        <View style={styles.settlementList}>
+          {debts
+            .filter(d => d.debtor?.phoneNumber === user?.phoneNumber || d.creditor?.phoneNumber === user?.phoneNumber)
+            .sort((a, b) => b.id - a.id) // Show newest first
+            .slice(0, 5)
+            .map((d, index) => (
+            <TouchableOpacity key={index} onPress={() => openEditModal(d)}>
               <TransactionCard 
-                key={item.id || index} 
-                transaction={item} 
-                onDelete={handleDeleteDebt}
-                onEdit={handleEditClick}
+                debtor={d.debtor?.name}
+                creditor={d.creditor?.name}
+                amount={d.amount}
+                status={d.status}
+                note={d.note}
               />
-            ))
-          ) : (
-            <View style={styles.emptyContent}>
-               <MaterialCommunityIcons name="receipt" size={48} color={Theme.colors.border} />
-               <Text style={styles.emptyText}>No personal records found.</Text>
+            </TouchableOpacity>
+          ))}
+
+          {debts.length === 0 && (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No transactions found.</Text>
             </View>
-          );
-        })()}
+          )}
+        </View>
+
+        {/* Bottom Spacer */}
+        <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Floating Action Button */}
-      <TouchableOpacity 
-        style={styles.fab}
-        onPress={() => setModalVisible(true)}
-      >
-        <MaterialCommunityIcons name="plus" size={32} color={Theme.colors.white} />
-      </TouchableOpacity>
+      {/* Edit Debt Modal */}
+      <Modal visible={!!selectedDebt} animationType="slide" transparent={true} onRequestClose={() => setSelectedDebt(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Edit Transaction</Text>
+            
+            {selectedDebt && (
+              <Text style={styles.modalSubtitle}>
+                {selectedDebt.creditor?.name} paid for {selectedDebt.debtor?.name}
+              </Text>
+            )}
 
-      {/* Modals */}
-      <AddDebtModal 
-        visible={modalVisible}
-        onClose={() => setModalVisible(false)}
-        onSuccess={fetchData}
-        user={user}
-        token={token}
-      />
+            <Text style={styles.label}>Amount</Text>
+            <View style={styles.inputContainer}>
+              <Text style={styles.currencyPrefix}>₹</Text>
+              <TextInput
+                style={styles.input}
+                keyboardType="numeric"
+                value={editAmount}
+                onChangeText={setEditAmount}
+                editable={!isSubmitting}
+              />
+            </View>
 
-      <EditDebtModal 
-        visible={editModalVisible}
-        onClose={() => setEditModalVisible(false)}
-        onSuccess={fetchData}
-        user={user}
-        token={token}
-        transaction={selectedTransaction}
+            <Text style={styles.label}>Note</Text>
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={styles.input}
+                value={editNote}
+                onChangeText={setEditNote}
+                editable={!isSubmitting}
+                placeholder="Optional Note"
+              />
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={[styles.actionBtn, styles.deleteBtn]} onPress={handleDelete} disabled={isSubmitting}>
+                <Text style={styles.deleteBtnText}>Delete</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={[styles.actionBtn, styles.saveBtn]} onPress={handleUpdate} disabled={isSubmitting}>
+                {isSubmitting ? <ActivityIndicator color={Theme.colors.white} /> : <Text style={styles.saveBtnText}>Save</Text>}
+              </TouchableOpacity>
+            </View>
+            
+            <TouchableOpacity style={styles.closeModalBtn} onPress={() => setSelectedDebt(null)}>
+              <Text style={styles.closeModalText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+      <PhoneOnboardingModal 
+        visible={showPhoneModal} 
+        onComplete={() => {
+          setShowPhoneModal(false);
+          fetchData();
+        }} 
       />
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  centered: { flex: 1, backgroundColor: Theme.colors.background, justifyContent: 'center', alignItems: 'center' },
-  container: { flex: 1, backgroundColor: Theme.colors.background },
-  scrollContent: { paddingHorizontal: Theme.spacing.lg, paddingBottom: 100 }, // Space for FAB
-  header: { marginTop: Theme.spacing.xl, marginBottom: Theme.spacing.lg, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  welcomeText: { fontSize: 16, color: Theme.colors.textSecondary },
-  userName: { fontSize: 32, color: Theme.colors.text, fontWeight: '800' },
-  profileCircle: { width: 52, height: 52, borderRadius: 26, backgroundColor: Theme.colors.surface, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: Theme.colors.primary },
-  headerActions: { flexDirection: 'row', alignItems: 'center', height: 56 },
-  logoutButton: { marginRight: 12, width: 44, height: 44, borderRadius: 12, backgroundColor: Theme.colors.surface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Theme.colors.border },
-  profileInitial: { color: Theme.colors.primary, fontSize: 20, fontWeight: '900' },
-  balanceCard: { backgroundColor: Theme.colors.primary, borderRadius: Theme.borderRadius.xl, padding: Theme.spacing.lg, marginBottom: Theme.spacing.xl },
-  balanceHeader: { flexDirection: 'row', alignItems: 'center' },
-  iconCircle: { backgroundColor: 'rgba(255,255,255,0.2)', width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginRight: Theme.spacing.sm },
-  balanceLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 14, fontWeight: '600' },
-  balanceAmount: { fontSize: 40, fontWeight: '900', marginTop: Theme.spacing.sm, color: Theme.colors.white },
-  chartContainer: { backgroundColor: Theme.colors.surface, padding: Theme.spacing.lg, borderRadius: Theme.borderRadius.xl, marginBottom: Theme.spacing.xl, borderWidth: 1, borderColor: Theme.colors.border },
-  donutWrapper: { position: 'relative', alignItems: 'center', justifyContent: 'center', height: 200 },
-  donutHole: { position: 'absolute', width: 100, height: 100, borderRadius: 50, backgroundColor: Theme.colors.surface, justifyContent: 'center', alignItems: 'center', zIndex: 10 },
-  netAmount: { fontSize: 24, fontWeight: '900', color: Theme.colors.text },
-  netLabel: { fontSize: 10, color: Theme.colors.textSecondary, fontWeight: '700', marginTop: 2 },
-  customLegend: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 20, paddingBottom: 10 },
-  legendItem: { flexDirection: 'row', alignItems: 'center' },
-  dot: { width: 12, height: 12, borderRadius: 6, marginRight: 8 },
-  legendText: { fontSize: 13, fontWeight: '700', color: Theme.colors.textSecondary },
-  sectionTitle: { fontSize: 20, fontWeight: '700', color: Theme.colors.text, marginBottom: Theme.spacing.md },
-  row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: Theme.spacing.xl },
-  miniCard: { backgroundColor: Theme.colors.surface, width: '48%', padding: Theme.spacing.md, borderRadius: Theme.borderRadius.lg, borderWidth: 1, borderColor: Theme.colors.border },
-  miniLabel: { fontSize: 12, color: Theme.colors.textSecondary, marginTop: Theme.spacing.sm, fontWeight: '600' },
-  miniAmount: { fontSize: 18, fontWeight: '800', color: Theme.colors.text, marginTop: 2 },
-  emptyContent: { alignItems: 'center', marginTop: 40, opacity: 0.5 },
-  emptyText: { color: Theme.colors.textSecondary, textAlign: 'center', marginTop: Theme.spacing.sm },
-  transactionsHeader: { marginTop: Theme.spacing.sm, marginBottom: Theme.spacing.sm, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  settleButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(79, 70, 229, 0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
-  settleButtonText: { color: Theme.colors.primary, fontSize: 13, fontWeight: '700', marginLeft: 4 },
-  fab: { position: 'absolute', right: 24, bottom: 24, width: 64, height: 64, borderRadius: 32, backgroundColor: Theme.colors.secondary, alignItems: 'center', justifyContent: 'center', elevation: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 4 }
+  container: {
+    flex: 1,
+    backgroundColor: Theme.colors.background,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: Theme.spacing.md,
+    marginTop: Theme.spacing.sm,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flex: 1,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: Theme.colors.text,
+    marginLeft: Theme.spacing.sm,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  iconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Theme.colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Theme.colors.border + '50',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Theme.colors.danger,
+    borderWidth: 2,
+    borderColor: Theme.colors.white,
+  },
+  content: {
+    paddingTop: Theme.spacing.lg,
+  },
+  greetSection: {
+    paddingHorizontal: Theme.spacing.lg,
+    marginBottom: Theme.spacing.md,
+  },
+  greetText: {
+    fontSize: 14,
+    color: Theme.colors.textSecondary,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  nameText: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: Theme.colors.text,
+    letterSpacing: -1,
+  },
+  heroSection: {
+    alignItems: 'center',
+    marginBottom: Theme.spacing.md,
+  },
+  summaryGrid: {
+    paddingHorizontal: Theme.spacing.md,
+    marginBottom: Theme.spacing.xl,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    marginBottom: Theme.spacing.sm,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    paddingHorizontal: Theme.spacing.lg,
+    marginBottom: Theme.spacing.md,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Theme.colors.text,
+  },
+  sectionAction: {
+    fontSize: 14,
+    color: Theme.colors.primary,
+    fontWeight: '600',
+  },
+  settlementList: {
+    paddingHorizontal: Theme.spacing.xs,
+  },
+  emptyContainer: {
+    padding: Theme.spacing.xl,
+    alignItems: 'center',
+  },
+  emptyText: {
+    color: Theme.colors.textSecondary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  squaredCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Theme.colors.success + '15',
+    marginHorizontal: Theme.spacing.lg,
+    padding: Theme.spacing.md,
+    borderRadius: Theme.borderRadius.lg,
+    marginBottom: Theme.spacing.xl,
+    borderWidth: 1,
+    borderColor: Theme.colors.success + '30',
+  },
+  squaredIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Theme.colors.success,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Theme.spacing.md,
+  },
+  squaredTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: Theme.colors.text,
+  },
+  squaredSubtitle: {
+    fontSize: 12,
+    color: Theme.colors.textSecondary,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: Theme.colors.white,
+    borderTopLeftRadius: Theme.borderRadius.xl,
+    borderTopRightRadius: Theme.borderRadius.xl,
+    padding: Theme.spacing.xl,
+    paddingBottom: 40,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: Theme.colors.text,
+    textAlign: 'center',
+    marginBottom: Theme.spacing.xs,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: Theme.colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: Theme.spacing.lg,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Theme.colors.text,
+    marginBottom: Theme.spacing.xs,
+    marginTop: Theme.spacing.md,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Theme.colors.surface,
+    padding: Theme.spacing.md,
+    borderRadius: Theme.borderRadius.lg,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+  },
+  currencyPrefix: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Theme.colors.text,
+    marginRight: 8,
+  },
+  input: {
+    flex: 1,
+    fontSize: 16,
+    color: Theme.colors.text,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: Theme.spacing.xl,
+  },
+  actionBtn: {
+    flex: 1,
+    padding: Theme.spacing.md,
+    borderRadius: Theme.borderRadius.lg,
+    alignItems: 'center',
+  },
+  deleteBtn: {
+    backgroundColor: Theme.colors.surface,
+    marginRight: Theme.spacing.sm,
+    borderWidth: 1,
+    borderColor: Theme.colors.danger,
+  },
+  deleteBtnText: {
+    color: Theme.colors.danger,
+    fontWeight: '700',
+    fontSize: 16,
+  },
+  saveBtn: {
+    backgroundColor: Theme.colors.primary,
+    marginLeft: Theme.spacing.sm,
+  },
+  saveBtnText: {
+    color: Theme.colors.white,
+    fontWeight: '700',
+    fontSize: 16,
+  },
+  closeModalBtn: {
+    marginTop: Theme.spacing.lg,
+    alignItems: 'center',
+  },
+  closeModalText: {
+    color: Theme.colors.textSecondary,
+    fontWeight: '600',
+  },
 });
 
 export default DashboardScreen;

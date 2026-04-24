@@ -20,4 +20,18 @@ public class Person {
     @Column(unique = true, nullable = false)
     private String email;
 
+    @Column(unique = true)
+    private String phoneNumber;
+
+    @ManyToMany
+    @JoinTable(
+        name = "person_friends",
+        joinColumns = @JoinColumn(name = "person_id"),
+        inverseJoinColumns = @JoinColumn(name = "friend_id")
+    )
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @lombok.EqualsAndHashCode.Exclude
+    @lombok.ToString.Exclude
+    private java.util.Set<Person> friends = new java.util.HashSet<>();
+
 }

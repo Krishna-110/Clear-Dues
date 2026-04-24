@@ -4,7 +4,6 @@ package com.fairshare.debt_settlement.model;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.Check;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
 
@@ -34,7 +33,10 @@ public class Debt {
     @Column(nullable = false)
     private Double amount;
 
+    @Column(nullable = false)
+    private String status = "PENDING"; // PENDING or SETTLED
 
+    private java.time.LocalDateTime settledAt;
 
-
+    private String note;
 }

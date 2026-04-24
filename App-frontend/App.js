@@ -1,113 +1,126 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
-import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as SecureStore from 'expo-secure-store';
+import { createStackNavigator } from '@react-navigation/stack';
+import { LayoutDashboard, PlusCircle, HandCoins, Users } from 'lucide-react-native';
+import { Theme } from './src/theme/Theme';
+import * as Linking from 'expo-linking';
+import { useStore } from './src/store/useStore';
 
 // Screens
 import LandingScreen from './src/screens/LandingScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
-import SettleUpScreen from './src/screens/SettleUpScreen';
+import AddDebtScreen from './src/screens/AddDebtScreen';
+import SettlementScreen from './src/screens/SettlementScreen';
 import ManagePersonsScreen from './src/screens/ManagePersonsScreen';
+import HistoryScreen from './src/screens/HistoryScreen';
 
-// Services & Theme
-import apiService from './src/services/apiService';
-import { Theme } from './src/theme/Theme';
-
-const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
+const Stack = createStackNavigator();
 
-function MainTabs({ route }) {
-  const { token, user } = route.params;
-
+function MainTabs() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         tabBarIcon: ({ color, size }) => {
-          let iconName;
-          if (route.name === 'Dashboard') iconName = 'view-dashboard';
-          else if (route.name === 'Settle Up') iconName = 'hand-coin';
-          else if (route.name === 'People') iconName = 'account-group';
-          return <MaterialCommunityIcons name={iconName} size={size} color={color} />;
+          if (route.name === 'Dashboard') return <LayoutDashboard size={size} color={color} />;
+          if (route.name === 'Record') return <PlusCircle size={size} color={color} />;
+          if (route.name === 'Settlements') return <HandCoins size={size} color={color} />;
+          if (route.name === 'Persons') return <Users size={size} color={color} />;
         },
         tabBarActiveTintColor: Theme.colors.primary,
         tabBarInactiveTintColor: Theme.colors.textSecondary,
         tabBarStyle: {
           height: 70,
-          paddingBottom: 4,
-          paddingTop: 1,
-          backgroundColor: Theme.colors.background,
-          borderTopWidth: 5,
-          borderTopColor: Theme.colors.primary,
-          elevation: 0,
+          paddingBottom: 10,
+          paddingTop: 10,
+          backgroundColor: Theme.colors.white,
+          borderTopWidth: 1,
+          borderTopColor: Theme.colors.border,
+          ...Theme.shadow.medium,
         },
         headerShown: false,
       })}
     >
-      <Tab.Screen
-        name="Dashboard"
-        component={DashboardScreen}
-        initialParams={{ token, user }}
-      />
-      <Tab.Screen
-        name="Settle Up"
-        component={SettleUpScreen}
-        initialParams={{ token, user }}
-      />
-      <Tab.Screen
-        name="People"
-        component={ManagePersonsScreen}
-        initialParams={{ token, user }}
-      />
+      <Tab.Screen name="Dashboard" component={DashboardScreen} />
+      <Tab.Screen name="Record" component={AddDebtScreen} />
+      <Tab.Screen name="Settlements" component={SettlementScreen} />
+      <Tab.Screen name="Persons" component={ManagePersonsScreen} />
     </Tab.Navigator>
   );
 }
 
+const LoadingScreen = () => (
+  <View style={styles.loadingContainer}>
+    <ActivityIndicator size="large" color={Theme.colors.primary} />
+  </View>
+);
+
 export default function App() {
-  const [isLoading, setIsLoading] = useState(true);
-  const [initialRoute, setInitialRoute] = useState('Landing');
-  const [authData, setAuthData] = useState(null);
+  const { setAuthenticated, checkAuth, isAuthenticated } = useStore();
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    const checkAuthStatus = async () => {
-      try {
-        const token = await SecureStore.getItemAsync('userToken');
-        if (token) {
-          // Attempt to fetch profile to verify token
-          const user = await apiService.getProfile(token);
-          setAuthData({ token, user });
-          setInitialRoute('MainTabs');
+    // 1. Initial Auth Check and initialization
+    const init = async () => {
+      await checkAuth();
+      setIsReady(true);
+    };
+    init();
+
+    // 2. Handle Deep Linking for OAuth2 Redirects
+    const handleDeepLink = (event) => {
+      const { url } = event;
+      if (url) {
+        try {
+          const { queryParams } = Linking.parse(url);
+          if (queryParams && queryParams.token) {
+            setAuthenticated(queryParams.token);
+          }
+        } catch (error) {
+          console.error('Deep link parse error', error);
         }
-      } catch (e) {
-        console.log('Token verification failed or no token found');
-        await SecureStore.deleteItemAsync('userToken');
-      } finally {
-        setIsLoading(false);
       }
     };
-    checkAuthStatus();
+
+    const subscription = Linking.addEventListener('url', handleDeepLink);
+
+    // Check for initial URL if app was closed
+    Linking.getInitialURL().then((url) => {
+      if (url) handleDeepLink({ url });
+    });
+
+    return () => {
+      subscription.remove();
+    };
   }, []);
 
-  if (isLoading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Theme.colors.background }}>
-        <ActivityIndicator size="large" color={Theme.colors.primary} />
-      </View>
-    );
+  if (!isReady) {
+    return <LoadingScreen />;
   }
 
   return (
     <NavigationContainer>
-      <Stack.Navigator initialRouteName={initialRoute} screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="Landing" component={LandingScreen} />
-        <Stack.Screen
-          name="MainTabs"
-          component={MainTabs}
-          initialParams={authData}
-        />
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        {isAuthenticated ? (
+          <>
+            <Stack.Screen name="Main" component={MainTabs} />
+            <Stack.Screen name="History" component={HistoryScreen} />
+          </>
+        ) : (
+          <Stack.Screen name="Landing" component={LandingScreen} />
+        )}
       </Stack.Navigator>
     </NavigationContainer>
   );
 }
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Theme.colors.white,
+  },
+});

@@ -90,6 +90,11 @@
 			<artifactId>dotenv-java</artifactId>
 			<version>3.1.0</version>
 		</dependency>
+		<dependency>
+			<groupId>com.vonage</groupId>
+			<artifactId>server-sdk</artifactId>
+			<version>9.10.2</version>
+		</dependency>
 	</dependencies>
 
 	<build>

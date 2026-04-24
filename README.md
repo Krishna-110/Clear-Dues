@@ -1,6 +1,6 @@
-# 💸 FairShare Backend API
+# 💸 Clear Dues
 
-A production-grade Spring Boot REST API built to track and settle shared expenses within groups. FairShare uses a greedy graph algorithm to minimize the total number of transactions required to settle debts, backed by a stateless OAuth2 + JWT security architecture.
+A production-grade Spring Boot REST API built to track and settle shared expenses within groups. Clear Dues uses a greedy graph algorithm to minimize the total number of transactions required to settle debts, backed by a stateless OAuth2 + JWT security architecture.
 
 ## ✨ Core Features
 
@@ -24,7 +24,7 @@ This backend implements a custom authentication bridge designed for native mobil
 2. User authenticates with Google.
 3. Spring Security intercepts the success response and provisions a new user in the MySQL database.
 4. The `JwtService` mathematically signs a stateless JWT.
-5. A custom `OAuth2LoginSuccessHandler` builds a deep link (`fairshare://login-success?token=...`) and redirects the user back to the mobile app with the token securely attached.
+5. A custom `OAuth2LoginSuccessHandler` builds a deep link (`cleardues://login-success?token=...`) and redirects the user back to the mobile app with the token securely attached.
 
 ## 🚀 Getting Started
 

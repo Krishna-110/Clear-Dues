@@ -9,8 +9,8 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class SettlementResponse {
     private String from;
-    private String fromEmail;
+    private String fromPhone;
     private String to;
-    private String toEmail;
+    private String toPhone;
     private Double amount;
 }

@@ -5,7 +5,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class DebtSettlementApplication {
+public class  DebtSettlementApplication {
 
 	public static void main(String[] args) {
 		// Load .env file and set system properties

@@ -1,198 +1,345 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  TouchableOpacity, 
-  ActivityIndicator, 
-  Alert,
-  TextInput,
-  RefreshControl,
-  Modal
-} from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Modal, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useStore } from '../store/useStore';
 import { Theme } from '../theme/Theme';
+import { Users, Trash2, Plus, X, RefreshCw, CheckCircle2, UserPlus } from 'lucide-react-native';
+import { getDeviceContacts, normalizePhoneNumber } from '../services/ContactService';
 import apiService from '../services/apiService';
 
-const ManagePersonsScreen = ({ navigation, route }) => {
-  const { token } = route.params;
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [persons, setPersons] = useState([]);
+const ManagePersonsScreen = () => {
+  const { persons, fetchData, addPerson, deletePerson, isLoading, user } = useStore();
   const [modalVisible, setModalVisible] = useState(false);
-  const [newPersonName, setNewPersonName] = useState('');
-  const [newPersonEmail, setNewPersonEmail] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  const fetchPersons = async () => {
-    try {
-      const data = await apiService.getAllPersons(token);
-      setPersons(data);
-    } catch (error) {
-      console.error('Error fetching persons:', error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+  const [newName, setNewName] = useState('');
+  const [newPhone, setNewPhone] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [validationMsg, setValidationMsg] = useState(null);
+  
+  const [deviceContacts, setDeviceContacts] = useState([]);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [viewMode, setViewMode] = useState('friends'); // 'friends' or 'contacts'
 
   useEffect(() => {
-    fetchPersons();
-  }, []);
+    const delayDebounceFn = setTimeout(async () => {
+      const normalized = normalizePhoneNumber(newPhone);
+      if (normalized && normalized.length === 10) {
+        try {
+          // Re-using checkPersonExists but it needs to support phone now
+          // For now, I'll use the existing check but better if I had a phone check
+          const res = await apiService.checkBatchContacts([normalized]);
+          const contact = res[0];
+          if (contact && contact.registered) {
+            setValidationMsg({ type: 'success', text: `Registered User Found: ${contact.name}` });
+            if (!newName) setNewName(contact.name);
+          } else {
+            setValidationMsg({ type: 'info', text: 'User not registered. A placeholder will be created.' });
+          }
+        } catch (e) {
+          setValidationMsg(null);
+        }
+      } else {
+        setValidationMsg(null);
+      }
+    }, 500);
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchPersons();
-  };
+    return () => clearTimeout(delayDebounceFn);
+  }, [newPhone]);
 
-  const handleAddPerson = async () => {
-    if (!newPersonName.trim() || !newPersonEmail.trim()) {
-      Alert.alert('Error', 'Please enter both name and email.');
-      return;
-    }
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
-    setSaving(true);
+  const handleSyncContacts = async () => {
+    setIsSyncing(true);
     try {
-      await apiService.addPerson({ 
-        name: newPersonName.trim(),
-        email: newPersonEmail.trim().toLowerCase()
-      }, token);
-      
-      setNewPersonName('');
-      setNewPersonEmail('');
-      setModalVisible(false);
-      fetchPersons();
-      Alert.alert('Success', 'Person added successfully!');
+      const contacts = await getDeviceContacts();
+      if (contacts.length > 0) {
+        const phoneNumbers = contacts.map(c => c.phoneNumber);
+        
+        // 1. Check which contacts are registered on ClearDues
+        const registrationData = await apiService.checkBatchContacts(phoneNumbers);
+        const registeredMap = new Map();
+        registrationData.forEach(r => registeredMap.set(r.normalized, r));
+
+        // 2. Identify registered users to auto-add as friends
+        const registeredContacts = contacts
+          .filter(c => registeredMap.has(c.phoneNumber) && registeredMap.get(c.phoneNumber).registered)
+          .map(c => ({
+            name: registeredMap.get(c.phoneNumber).name || c.name,
+            phoneNumber: c.phoneNumber
+          }));
+
+        if (registeredContacts.length > 0) {
+          // Auto-sync only the registered ones
+          await apiService.syncBatchContacts(registeredContacts);
+        }
+
+        // 3. Prepare the full contact list for the UI
+        const friendsPhoneSet = new Set(persons.map(p => p.phoneNumber));
+        const enrichedContacts = contacts.map(c => {
+          const regInfo = registeredMap.get(c.phoneNumber);
+          return {
+            ...c,
+            registered: regInfo?.registered || false,
+            backendName: regInfo?.name,
+            isFriend: friendsPhoneSet.has(c.phoneNumber)
+          };
+        }).sort((a, b) => {
+          // Sort: Registered (not friends) first, then others
+          if (a.registered && !a.isFriend) return -1;
+          if (b.registered && !b.isFriend) return 1;
+          return 0;
+        });
+
+        setDeviceContacts(enrichedContacts);
+        await fetchData(); // Refresh friends list
+        
+        setViewMode('contacts');
+        if (registeredContacts.length > 0) {
+          Alert.alert('Sync Complete', `Found and added ${registeredContacts.length} friends who are already on ClearDues!`);
+        }
+      } else {
+        Alert.alert('No Contacts', 'No valid contacts with phone numbers found.');
+      }
     } catch (error) {
-      const message = error.response?.data?.message || 'Failed to add person.';
-      Alert.alert('Error', message);
+      console.error(error);
+      Alert.alert('Sync Error', 'Could not sync contacts.');
     } finally {
-      setSaving(false);
+      setIsSyncing(false);
     }
   };
 
-  const handleDeletePerson = (id, name) => {
+  const inviteContact = (contact) => {
+    const message = `Hey ${contact.name}! Join me on ClearDues to track and settle our shared expenses easily. Download here: https://cleardues.app`;
+    const url = `sms:${contact.phoneNumber}${Platform.OS === 'ios' ? '&' : '?'}body=${encodeURIComponent(message)}`;
+    Linking.openURL(url);
+  };
+
+  const addFromContacts = async (contact) => {
+    setIsSubmitting(true);
+    try {
+      await addPerson({ 
+        name: contact.backendName || contact.name, 
+        phoneNumber: contact.phoneNumber 
+      });
+      // Mark as friend locally
+      setDeviceContacts(prev => prev.map(c => 
+        c.phoneNumber === contact.phoneNumber ? { ...c, isFriend: true } : c
+      ));
+      await fetchData();
+      Alert.alert('Success', `${contact.name} added to your friends!`);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to add friend.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleAdd = async () => {
+    if (!newName.trim() || !newPhone.trim() || isSubmitting) return;
+    
+    setIsSubmitting(true);
+    try {
+      await addPerson({ 
+        name: newName.trim(), 
+        phoneNumber: normalizePhoneNumber(newPhone.trim()) 
+      });
+      setNewName('');
+      setNewPhone('');
+      setValidationMsg(null);
+      setModalVisible(false);
+      fetchData();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to add person.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const confirmDelete = (id, name) => {
+    if (!id) return;
     Alert.alert(
-      'Delete Person',
-      `Are you sure you want to delete ${name}? This will delete all their debt records.`,
+      'Remove Friend',
+      `Are you sure you want to remove ${name || 'this person'} from your friends? Your shared transaction history will still be preserved.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Delete', 
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await apiService.deletePerson(id, token);
-              fetchPersons();
-            } catch (error) {
-              Alert.alert('Error', 'Failed to delete person.');
-            }
-          }
+        { text: 'Remove', style: 'destructive', onPress: async () => {
+             await deletePerson(id);
+             setDeviceContacts(prev => prev.map(c => 
+               c.backendName === name ? { ...c, isFriend: false } : c
+             ));
+          } 
         }
       ]
     );
   };
 
-  if (loading && !refreshing) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color={Theme.colors.primary} />
-      </View>
-    );
-  }
+  const getInitials = (name) => {
+    if (!name) return '?';
+    return name.charAt(0).toUpperCase();
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Network</Text>
+        <View style={styles.titleRow}>
+          <Users size={24} color={Theme.colors.primary} />
+          <Text style={styles.headerTitle}>People</Text>
+        </View>
+        <View style={styles.headerActions}>
+          <TouchableOpacity 
+            style={[styles.syncButton, isSyncing && { opacity: 0.5 }]}
+            onPress={handleSyncContacts}
+            disabled={isSyncing}
+          >
+            {isSyncing ? <ActivityIndicator size="small" color={Theme.colors.primary} /> : <RefreshCw size={20} color={Theme.colors.primary} />}
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.addButton}
+            onPress={() => setModalVisible(true)}
+          >
+            <Plus size={20} color={Theme.colors.white} />
+            <Text style={styles.addButtonText}>Add</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.tabContainer}>
         <TouchableOpacity 
-          style={styles.addButton}
-          onPress={() => setModalVisible(true)}
+          style={[styles.tab, viewMode === 'friends' && styles.activeTab]} 
+          onPress={() => setViewMode('friends')}
         >
-          <MaterialCommunityIcons name="account-plus" size={24} color={Theme.colors.primary} />
+          <Text style={[styles.tabText, viewMode === 'friends' && styles.activeTabText]}>My Friends</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.tab, viewMode === 'contacts' && styles.activeTab]} 
+          onPress={handleSyncContacts}
+        >
+          <Text style={[styles.tabText, viewMode === 'contacts' && styles.activeTabText]}>Contacts</Text>
         </TouchableOpacity>
       </View>
 
-      <ScrollView 
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Theme.colors.primary} />}
-      >
-        <View style={styles.infoBox}>
-           <Text style={styles.infoText}>Add people to your network using their emails. This allows you to log debts with them accurately.</Text>
-        </View>
-
-        {persons.map((person) => (
-          <TouchableOpacity 
-            key={person.id} 
-            style={styles.personCard}
-            onLongPress={() => handleDeletePerson(person.id, person.name)}
-          >
-            <View style={[styles.avatar, { backgroundColor: Theme.colors.surface }]}>
-              <Text style={styles.avatarText}>{person.name.substring(0, 1).toUpperCase()}</Text>
+      <FlatList
+        data={viewMode === 'friends' ? persons : deviceContacts}
+        keyExtractor={(item, index) => (viewMode === 'friends' ? `friend-${item.id}` : `contact-${item.phoneNumber}`) || index.toString()}
+        renderItem={({ item }) => (
+          <View style={[styles.personCard, Theme.shadow.light]}>
+            <View style={styles.personInfo}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{getInitials(item?.name)}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={styles.nameRow}>
+                  <Text style={styles.personName} numberOfLines={1}>{item?.name || 'Unknown'}</Text>
+                  {viewMode === 'contacts' && item.registered && (
+                    <View style={styles.registeredBadge}>
+                      <CheckCircle2 size={12} color={Theme.colors.white} />
+                      <Text style={styles.registeredText}>On ClearDues</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.personSub}>{item?.phoneNumber || (item.email && !item.email.includes('cleardues.local') && !item.email.includes('fairshare.local') ? item.email : '')}</Text>
+              </View>
             </View>
-            <View style={styles.personDetails}>
-              <Text style={styles.personName}>{person.name}</Text>
-              <Text style={styles.personEmail}>{person.email}</Text>
-            </View>
-            <MaterialCommunityIcons name="dots-vertical" size={20} color={Theme.colors.textSecondary} />
-          </TouchableOpacity>
-        ))}
-
-        {persons.length === 0 && (
-          <View style={styles.emptyContainer}>
-            <MaterialCommunityIcons name="account-group-outline" size={64} color={Theme.colors.border} />
-            <Text style={styles.emptyText}>No persons in your network yet.</Text>
+            
+            {viewMode === 'friends' ? (
+              <TouchableOpacity onPress={() => confirmDelete(item?.id, item?.name)}>
+                <Trash2 size={20} color={Theme.colors.danger} opacity={0.7} />
+              </TouchableOpacity>
+            ) : (
+              <View>
+                {item.isFriend ? (
+                  <View style={styles.addedBadge}>
+                    <Text style={styles.addedText}>Added</Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity style={styles.circleAddBtn} onPress={() => addFromContacts(item)}>
+                    <Plus size={24} color={Theme.colors.primary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
           </View>
         )}
-      </ScrollView>
+        contentContainerStyle={styles.list}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            {isLoading || isSyncing ? (
+              <ActivityIndicator color={Theme.colors.primary} />
+            ) : (
+              <View style={{ alignItems: 'center' }}>
+                <Text style={styles.emptyText}>
+                  {viewMode === 'friends' ? "No friends added yet." : "Sync contacts to discover people!"}
+                </Text>
+                {viewMode === 'contacts' && !isSyncing && (
+                   <TouchableOpacity style={styles.retryBtn} onPress={handleSyncContacts}>
+                      <Text style={styles.retryBtnText}>Sync Now</Text>
+                   </TouchableOpacity>
+                )}
+              </View>
+            )}
+          </View>
+        }
+      />
 
-      {/* Add Person Modal */}
       <Modal
-        visible={modalVisible}
         animationType="slide"
         transparent={true}
+        visible={modalVisible}
         onRequestClose={() => setModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Add Person</Text>
-            <Text style={styles.modalSubTitle}>Enter the details of the person you want to add.</Text>
-            
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add New Person</Text>
+              <TouchableOpacity onPress={() => {
+                setModalVisible(false);
+                setNewName('');
+                setNewPhone('');
+                setValidationMsg(null);
+              }}>
+                <X size={24} color={Theme.colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
             <TextInput
               style={styles.input}
               placeholder="Full Name"
-              placeholderTextColor={Theme.colors.textSecondary}
-              value={newPersonName}
-              onChangeText={setNewPersonName}
+              value={newName}
+              onChangeText={setNewName}
+              autoFocus
+              editable={!isSubmitting}
             />
-
-            <TextInput
-              style={styles.input}
-              placeholder="Email Address"
-              placeholderTextColor={Theme.colors.textSecondary}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              value={newPersonEmail}
-              onChangeText={setNewPersonEmail}
-            />
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity 
-                style={[styles.modalButton, styles.cancelButton]} 
-                onPress={() => setModalVisible(false)}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.modalButton, styles.saveButton, saving && { opacity: 0.7 }]} 
-                onPress={handleAddPerson}
-                disabled={saving}
-              >
-                <Text style={styles.saveButtonText}>{saving ? 'Saving...' : 'Add Person'}</Text>
-              </TouchableOpacity>
+            <View style={styles.phoneInputRow}>
+               <Text style={styles.phonePrefix}>+91</Text>
+               <TextInput
+                style={[styles.input, { flex: 1, marginBottom: 0 }]}
+                placeholder="Phone Number"
+                value={newPhone}
+                onChangeText={setNewPhone}
+                keyboardType="phone-pad"
+                maxLength={10}
+                editable={!isSubmitting}
+              />
             </View>
+            
+            {validationMsg && (
+              <Text style={[styles.validationText, { marginTop: Theme.spacing.sm, color: validationMsg.type === 'success' ? Theme.colors.primary : Theme.colors.textSecondary }]}>
+                {validationMsg.text}
+              </Text>
+            )}
+
+            <TouchableOpacity 
+              style={[styles.submitButton, isSubmitting && { opacity: 0.7 }, { marginTop: Theme.spacing.lg }]} 
+              onPress={handleAdd}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <ActivityIndicator color={Theme.colors.white} />
+              ) : (
+                <Text style={styles.submitButtonText}>Save Person</Text>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -201,33 +348,267 @@ const ManagePersonsScreen = ({ navigation, route }) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Theme.colors.background },
-  centered: { flex: 1, backgroundColor: Theme.colors.background, justifyContent: 'center', alignItems: 'center' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingVertical: 16 },
-  title: { fontSize: 28, fontWeight: '800', color: Theme.colors.text },
-  addButton: { padding: 12, borderRadius: 16, backgroundColor: Theme.colors.surface, borderWidth: 1, borderColor: Theme.colors.border },
-  scrollContent: { padding: 24 },
-  infoBox: { backgroundColor: 'rgba(79, 70, 229, 0.05)', padding: 16, borderRadius: 16, marginBottom: 24, borderWidth: 1, borderColor: 'rgba(79, 70, 229, 0.2)' },
-  infoText: { fontSize: 13, color: Theme.colors.textSecondary, lineHeight: 18 },
-  personCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: Theme.colors.surface, padding: 16, borderRadius: 20, marginBottom: 12, borderWidth: 1, borderColor: Theme.colors.border },
-  avatar: { width: 50, height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center', marginRight: 16, borderWidth: 1, borderColor: Theme.colors.border },
-  avatarText: { fontSize: 20, fontWeight: '800', color: Theme.colors.primary },
-  personDetails: { flex: 1 },
-  personName: { fontSize: 18, fontWeight: '700', color: Theme.colors.text },
-  personEmail: { fontSize: 13, color: Theme.colors.textSecondary, marginTop: 2 },
-  emptyContainer: { alignItems: 'center', marginTop: 100 },
-  emptyText: { color: Theme.colors.textSecondary, marginTop: 16, fontSize: 16 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 24 },
-  modalContent: { backgroundColor: Theme.colors.surface, borderRadius: 24, padding: 24, borderWidth: 1, borderColor: Theme.colors.border },
-  modalTitle: { fontSize: 22, fontWeight: '800', color: Theme.colors.text, marginBottom: 8 },
-  modalSubTitle: { fontSize: 14, color: Theme.colors.textSecondary, marginBottom: 20 },
-  input: { backgroundColor: Theme.colors.background, borderRadius: 16, padding: 16, color: Theme.colors.text, fontSize: 16, borderWidth: 1, borderColor: Theme.colors.border, marginBottom: 16 },
-  modalButtons: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
-  modalButton: { flex: 1, paddingVertical: 16, borderRadius: 16, alignItems: 'center' },
-  cancelButton: { marginRight: 12 },
-  cancelButtonText: { color: Theme.colors.textSecondary, fontWeight: '700' },
-  saveButton: { backgroundColor: Theme.colors.primary },
-  saveButtonText: { color: Theme.colors.white, fontWeight: '800' }
+  container: {
+    flex: 1,
+    backgroundColor: Theme.colors.background,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: Theme.spacing.md,
+    marginTop: Theme.spacing.sm,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: Theme.colors.text,
+    marginLeft: Theme.spacing.sm,
+  },
+  addButton: {
+    backgroundColor: Theme.colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+    borderRadius: Theme.borderRadius.full,
+  },
+  addButtonText: {
+    color: Theme.colors.white,
+    fontWeight: '700',
+    marginLeft: 4,
+  },
+  list: {
+    padding: Theme.spacing.md,
+  },
+  personCard: {
+    backgroundColor: Theme.colors.white,
+    padding: Theme.spacing.md,
+    borderRadius: Theme.borderRadius.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Theme.spacing.sm,
+  },
+  personInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Theme.colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Theme.spacing.md,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+  },
+  avatarText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Theme.colors.primary,
+  },
+  personName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Theme.colors.text,
+  },
+  personSub: {
+    fontSize: 12,
+    color: Theme.colors.textSecondary,
+    marginTop: 2,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  syncButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Theme.colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Theme.spacing.sm,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: Theme.spacing.md,
+    marginBottom: Theme.spacing.sm,
+  },
+  tab: {
+    paddingVertical: Theme.spacing.sm,
+    paddingHorizontal: Theme.spacing.lg,
+    marginRight: Theme.spacing.sm,
+    borderRadius: Theme.borderRadius.full,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+    backgroundColor: Theme.colors.white,
+  },
+  activeTab: {
+    backgroundColor: Theme.colors.primary,
+    borderColor: Theme.colors.primary,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Theme.colors.textSecondary,
+  },
+  activeTabText: {
+    color: Theme.colors.white,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  registeredBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Theme.colors.primary + '20',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginLeft: Theme.spacing.sm,
+    borderWidth: 1,
+    borderColor: Theme.colors.primary + '50',
+  },
+  registeredText: {
+    color: Theme.colors.primary,
+    fontSize: 10,
+    fontWeight: '800',
+    marginLeft: 3,
+  },
+  circleAddBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Theme.colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Theme.colors.primary + '40',
+  },
+  addedBadge: {
+    backgroundColor: Theme.colors.background,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+  },
+  addedText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Theme.colors.textSecondary,
+  },
+  inviteBtn: {
+    backgroundColor: Theme.colors.surface,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Theme.colors.primary,
+  },
+  inviteText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Theme.colors.primary,
+  },
+  phoneInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Theme.colors.surface,
+    borderRadius: Theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+    height: 56,
+  },
+  phonePrefix: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Theme.colors.text,
+    paddingHorizontal: Theme.spacing.md,
+    borderRightWidth: 1,
+    borderRightColor: Theme.colors.border,
+  },
+  retryBtn: {
+    marginTop: Theme.spacing.md,
+    paddingHorizontal: Theme.spacing.xl,
+    paddingVertical: Theme.spacing.sm,
+    backgroundColor: Theme.colors.primary,
+    borderRadius: Theme.borderRadius.full,
+  },
+  retryBtnText: {
+    color: Theme.colors.white,
+    fontWeight: '700',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    marginTop: 60,
+  },
+  emptyText: {
+    color: Theme.colors.textSecondary,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: Theme.colors.white,
+    borderTopLeftRadius: Theme.borderRadius.xl,
+    borderTopRightRadius: Theme.borderRadius.xl,
+    padding: Theme.spacing.lg,
+    paddingBottom: 40,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Theme.spacing.lg,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: Theme.colors.text,
+  },
+  input: {
+    backgroundColor: Theme.colors.surface,
+    borderRadius: Theme.borderRadius.md,
+    padding: Theme.spacing.md,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+    marginBottom: Theme.spacing.lg,
+  },
+  submitButton: {
+    backgroundColor: Theme.colors.primary,
+    padding: Theme.spacing.md,
+    borderRadius: Theme.borderRadius.md,
+    alignItems: 'center',
+    height: 56,
+    justifyContent: 'center',
+  },
+  submitButtonText: {
+    color: Theme.colors.white,
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  validationText: {
+    fontSize: 12,
+    marginBottom: Theme.spacing.lg,
+    fontWeight: '600',
+    paddingHorizontal: 4,
+  },
 });
 
 export default ManagePersonsScreen;
