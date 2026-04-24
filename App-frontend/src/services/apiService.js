@@ -2,7 +2,7 @@ import axios from 'axios';
 import authStorage from '../utils/authStorage';
 
 // BACKEND_URL provided by the user
-const BACKEND_URL = 'https://pseudoviscous-holozoic-elian.ngrok-free.dev';
+const BACKEND_URL = 'https://clear-dues-production.up.railway.app';
 const API_BASE_URL = `${BACKEND_URL}/api`;
 
 const api = axios.create({
