@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Modal, A
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStore } from '../store/useStore';
 import { Theme } from '../theme/Theme';
-import { Users, Trash2, Plus, X, RefreshCw, CheckCircle2, UserPlus } from 'lucide-react-native';
+import { Users, Trash2, Plus, X, RefreshCw, CheckCircle2, UserPlus, Search } from 'lucide-react-native';
 import { getDeviceContacts, normalizePhoneNumber } from '../services/ContactService';
 import apiService from '../services/apiService';
 
@@ -18,6 +18,7 @@ const ManagePersonsScreen = () => {
   const [deviceContacts, setDeviceContacts] = useState([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [viewMode, setViewMode] = useState('friends'); // 'friends' or 'contacts'
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(async () => {
@@ -51,6 +52,7 @@ const ManagePersonsScreen = () => {
 
   const handleSyncContacts = async () => {
     setIsSyncing(true);
+    setSearchQuery('');
     try {
       const contacts = await getDeviceContacts();
       if (contacts.length > 0) {
@@ -127,7 +129,6 @@ const ManagePersonsScreen = () => {
         c.phoneNumber === contact.phoneNumber ? { ...c, isFriend: true } : c
       ));
       await fetchData();
-      Alert.alert('Success', `${contact.name} added to your friends!`);
     } catch (error) {
       Alert.alert('Error', 'Failed to add friend.');
     } finally {
@@ -179,6 +180,16 @@ const ManagePersonsScreen = () => {
     return name.charAt(0).toUpperCase();
   };
 
+  const filteredData = (viewMode === 'friends' ? persons : deviceContacts).filter(item => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.trim().toLowerCase();
+    return (
+      item?.name?.toLowerCase().includes(query) ||
+      item?.phoneNumber?.toLowerCase().includes(query) ||
+      item?.email?.toLowerCase().includes(query)
+    );
+  });
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -207,7 +218,10 @@ const ManagePersonsScreen = () => {
       <View style={styles.tabContainer}>
         <TouchableOpacity 
           style={[styles.tab, viewMode === 'friends' && styles.activeTab]} 
-          onPress={() => setViewMode('friends')}
+          onPress={() => {
+            setViewMode('friends');
+            setSearchQuery('');
+          }}
         >
           <Text style={[styles.tabText, viewMode === 'friends' && styles.activeTabText]}>My Friends</Text>
         </TouchableOpacity>
@@ -219,8 +233,27 @@ const ManagePersonsScreen = () => {
         </TouchableOpacity>
       </View>
 
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <Search size={18} color={Theme.colors.textSecondary} style={styles.searchIcon} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder={viewMode === 'friends' ? "Search friends by name..." : "Search contacts by name..."}
+          placeholderTextColor={Theme.colors.textSecondary}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        {searchQuery ? (
+          <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearSearchBtn}>
+            <X size={16} color={Theme.colors.textSecondary} />
+          </TouchableOpacity>
+        ) : null}
+      </View>
+
       <FlatList
-        data={viewMode === 'friends' ? persons : deviceContacts}
+        data={filteredData}
         keyExtractor={(item, index) => (viewMode === 'friends' ? `friend-${item.id}` : `contact-${item.phoneNumber}`) || index.toString()}
         renderItem={({ item }) => (
           <View style={[styles.personCard, Theme.shadow.light]}>
@@ -267,14 +300,28 @@ const ManagePersonsScreen = () => {
             {isLoading || isSyncing ? (
               <ActivityIndicator color={Theme.colors.primary} />
             ) : (
-              <View style={{ alignItems: 'center' }}>
-                <Text style={styles.emptyText}>
-                  {viewMode === 'friends' ? "No friends added yet." : "Sync contacts to discover people!"}
-                </Text>
-                {viewMode === 'contacts' && !isSyncing && (
-                   <TouchableOpacity style={styles.retryBtn} onPress={handleSyncContacts}>
-                      <Text style={styles.retryBtnText}>Sync Now</Text>
-                   </TouchableOpacity>
+              <View style={{ alignItems: 'center', paddingHorizontal: Theme.spacing.lg }}>
+                {searchQuery.trim() ? (
+                  <>
+                    <Search size={40} color={Theme.colors.textSecondary} style={{ opacity: 0.4, marginBottom: Theme.spacing.sm }} />
+                    <Text style={[styles.emptyText, { fontWeight: '700', color: Theme.colors.text }]}>
+                      No results found for "{searchQuery}"
+                    </Text>
+                    <Text style={[styles.emptySubText, { marginTop: 4, textAlign: 'center' }]}>
+                      Check the spelling or try a different search term
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.emptyText}>
+                      {viewMode === 'friends' ? "No friends added yet." : "Sync contacts to discover people!"}
+                    </Text>
+                    {viewMode === 'contacts' && !isSyncing && (
+                       <TouchableOpacity style={styles.retryBtn} onPress={handleSyncContacts}>
+                          <Text style={styles.retryBtnText}>Sync Now</Text>
+                       </TouchableOpacity>
+                    )}
+                  </>
                 )}
               </View>
             )}
@@ -608,6 +655,35 @@ const styles = StyleSheet.create({
     marginBottom: Theme.spacing.lg,
     fontWeight: '600',
     paddingHorizontal: 4,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Theme.colors.white,
+    marginHorizontal: Theme.spacing.md,
+    marginBottom: Theme.spacing.sm,
+    paddingHorizontal: Theme.spacing.md,
+    borderRadius: Theme.borderRadius.full,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+    height: 46,
+    ...Theme.shadow.light,
+  },
+  searchIcon: {
+    marginRight: Theme.spacing.sm,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: Theme.colors.text,
+    paddingVertical: 8,
+  },
+  clearSearchBtn: {
+    padding: 4,
+  },
+  emptySubText: {
+    color: Theme.colors.textSecondary,
+    fontSize: 13,
   },
 });
 

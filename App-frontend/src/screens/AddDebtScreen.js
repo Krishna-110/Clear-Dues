@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView,
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStore } from '../store/useStore';
 import { Theme } from '../theme/Theme';
-import { Save, UserCircle, ChevronDown, Paperclip } from 'lucide-react-native';
+import { Save, UserCircle, ChevronDown, Paperclip, UserPlus } from 'lucide-react-native';
 
 const AddDebtScreen = ({ navigation }) => {
   const { persons, addDebt, fetchData, user } = useStore();
@@ -171,6 +171,27 @@ const AddDebtScreen = ({ navigation }) => {
               )}
               showsVerticalScrollIndicator={false}
             />
+            {persons.length === 0 && (
+              <View style={styles.emptyModalContainer}>
+                <View style={styles.emptyIconWrapper}>
+                  <UserPlus size={24} color={Theme.colors.primary} />
+                </View>
+                <Text style={styles.emptyModalTitle}>No Friends Added</Text>
+                <Text style={styles.emptyModalText}>
+                  To split debts, you need to add your friends or sync your phone contacts first.
+                </Text>
+                <TouchableOpacity 
+                  style={[styles.modalAddButton, Theme.shadow.light]}
+                  onPress={() => {
+                    setShowPersonModal(false);
+                    navigation.navigate('Persons');
+                  }}
+                >
+                  <UserPlus size={18} color={Theme.colors.white} style={{ marginRight: 8 }} />
+                  <Text style={styles.modalAddButtonText}>Add Friends / Sync Contacts</Text>
+                </TouchableOpacity>
+              </View>
+            )}
             <TouchableOpacity style={styles.closeButton} onPress={() => setShowPersonModal(false)}>
               <Text style={styles.closeButtonText}>Cancel</Text>
             </TouchableOpacity>
@@ -304,6 +325,53 @@ const styles = StyleSheet.create({
   },
   closeButtonText: {
     color: Theme.colors.danger,
+    fontWeight: '700',
+  },
+  emptyModalContainer: {
+    backgroundColor: Theme.colors.primary + '08', // light indigo tinted surface
+    borderRadius: Theme.borderRadius.lg,
+    padding: Theme.spacing.md,
+    alignItems: 'center',
+    marginVertical: Theme.spacing.md,
+    borderWidth: 1,
+    borderColor: Theme.colors.primary + '15',
+  },
+  emptyIconWrapper: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: Theme.colors.primary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Theme.spacing.xs,
+  },
+  emptyModalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Theme.colors.text,
+    marginBottom: Theme.spacing.xs,
+  },
+  emptyModalText: {
+    fontSize: 13,
+    color: Theme.colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: Theme.spacing.md,
+    paddingHorizontal: Theme.spacing.sm,
+  },
+  modalAddButton: {
+    backgroundColor: Theme.colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Theme.spacing.sm,
+    paddingHorizontal: Theme.spacing.md,
+    borderRadius: Theme.borderRadius.full,
+    width: '100%',
+  },
+  modalAddButtonText: {
+    color: Theme.colors.white,
+    fontSize: 14,
     fontWeight: '700',
   },
 });

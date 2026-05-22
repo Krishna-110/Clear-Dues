@@ -7,6 +7,7 @@ import { LayoutDashboard, PlusCircle, HandCoins, Users } from 'lucide-react-nati
 import { Theme } from './src/theme/Theme';
 import * as Linking from 'expo-linking';
 import { useStore } from './src/store/useStore';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Screens
 import LandingScreen from './src/screens/LandingScreen';
@@ -20,6 +21,8 @@ const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
 function MainTabs() {
+  const insets = useSafeAreaInsets();
+  
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -32,8 +35,8 @@ function MainTabs() {
         tabBarActiveTintColor: Theme.colors.primary,
         tabBarInactiveTintColor: Theme.colors.textSecondary,
         tabBarStyle: {
-          height: 70,
-          paddingBottom: 10,
+          height: 65 + insets.bottom,
+          paddingBottom: insets.bottom > 0 ? insets.bottom : 10,
           paddingTop: 10,
           backgroundColor: Theme.colors.white,
           borderTopWidth: 1,
@@ -101,18 +104,20 @@ export default function App() {
   }
 
   return (
-    <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {isAuthenticated ? (
-          <>
-            <Stack.Screen name="Main" component={MainTabs} />
-            <Stack.Screen name="History" component={HistoryScreen} />
-          </>
-        ) : (
-          <Stack.Screen name="Landing" component={LandingScreen} />
-        )}
-      </Stack.Navigator>
-    </NavigationContainer>
+    <SafeAreaProvider>
+      <NavigationContainer>
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          {isAuthenticated ? (
+            <>
+              <Stack.Screen name="Main" component={MainTabs} />
+              <Stack.Screen name="History" component={HistoryScreen} />
+            </>
+          ) : (
+            <Stack.Screen name="Landing" component={LandingScreen} />
+          )}
+        </Stack.Navigator>
+      </NavigationContainer>
+    </SafeAreaProvider>
   );
 }
 

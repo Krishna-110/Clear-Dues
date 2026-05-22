@@ -1,5 +1,6 @@
 import React, { useEffect, useCallback, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, SafeAreaView, TouchableOpacity, Modal, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Modal, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStore } from '../store/useStore';
 import { Theme } from '../theme/Theme';
 import SummaryCard from '../components/SummaryCard';
@@ -81,12 +82,11 @@ const DashboardScreen = ({ navigation }) => {
   };
 
   // Document-Aligned Calculations based on Current User
-  // EXCLUDE 'Automated Settlement Result' to avoid doubling volume when debts migrate
+  // Total active outstanding debts in the system (PENDING status)
   const userTotalDebts = debts
     .filter(d => 
       (d.debtor?.phoneNumber === user?.phoneNumber || d.creditor?.phoneNumber === user?.phoneNumber) && 
-      !d.note?.includes('Automated Settlement Result') && 
-      !d.note?.includes('Settled via Optimization')
+      d.status === 'PENDING'
     )
     .reduce((acc, d) => acc + d.amount, 0);
     
@@ -102,8 +102,13 @@ const DashboardScreen = ({ navigation }) => {
   const pendingAmount = Math.abs(totalGet - totalOwe);
   const netBalance = totalGet - totalOwe;
     
-  // Total Settled = Original Volume - Current Pending
-  const totalSettled = Math.max(0, userTotalDebts - pendingAmount);
+  // Total Settled volume = Sum of all SETTLED status debts
+  const totalSettled = debts
+    .filter(d => 
+      (d.debtor?.phoneNumber === user?.phoneNumber || d.creditor?.phoneNumber === user?.phoneNumber) && 
+      d.status === 'SETTLED'
+    )
+    .reduce((acc, d) => acc + d.amount, 0);
 
   // Success Indicator: If user has PENDING records but their NET impact is 0
   const hasRawPending = debts.some(d => (d.debtor?.phoneNumber === user?.phoneNumber || d.creditor?.phoneNumber === user?.phoneNumber) && d.status === 'PENDING');
