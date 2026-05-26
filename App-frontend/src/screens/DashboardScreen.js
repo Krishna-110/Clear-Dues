@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Modal, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Modal, TextInput, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStore } from '../store/useStore';
 import { Theme } from '../theme/Theme';
@@ -233,54 +233,59 @@ const DashboardScreen = ({ navigation }) => {
 
       {/* Edit Debt Modal */}
       <Modal visible={!!selectedDebt} animationType="slide" transparent={true} onRequestClose={() => setSelectedDebt(null)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Edit Transaction</Text>
-            
-            {selectedDebt && (
-              <Text style={styles.modalSubtitle}>
-                {selectedDebt.creditor?.name} paid for {selectedDebt.debtor?.name}
-              </Text>
-            )}
-
-            <Text style={styles.label}>Amount</Text>
-            <View style={styles.inputContainer}>
-              <Text style={styles.currencyPrefix}>₹</Text>
-              <TextInput
-                style={styles.input}
-                keyboardType="numeric"
-                value={editAmount}
-                onChangeText={setEditAmount}
-                editable={!isSubmitting}
-              />
-            </View>
-
-            <Text style={styles.label}>Note</Text>
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={styles.input}
-                value={editNote}
-                onChangeText={setEditNote}
-                editable={!isSubmitting}
-                placeholder="Optional Note"
-              />
-            </View>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={[styles.actionBtn, styles.deleteBtn]} onPress={handleDelete} disabled={isSubmitting}>
-                <Text style={styles.deleteBtnText}>Delete</Text>
-              </TouchableOpacity>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'padding'} 
+          style={{ flex: 1 }}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Edit Transaction</Text>
               
-              <TouchableOpacity style={[styles.actionBtn, styles.saveBtn]} onPress={handleUpdate} disabled={isSubmitting}>
-                {isSubmitting ? <ActivityIndicator color={Theme.colors.white} /> : <Text style={styles.saveBtnText}>Save</Text>}
+              {selectedDebt && (
+                <Text style={styles.modalSubtitle}>
+                  {selectedDebt.creditor?.name} paid for {selectedDebt.debtor?.name}
+                </Text>
+              )}
+
+              <Text style={styles.label}>Amount</Text>
+              <View style={styles.inputContainer}>
+                <Text style={styles.currencyPrefix}>₹</Text>
+                <TextInput
+                  style={styles.input}
+                  keyboardType="numeric"
+                  value={editAmount}
+                  onChangeText={setEditAmount}
+                  editable={!isSubmitting}
+                />
+              </View>
+
+              <Text style={styles.label}>Note</Text>
+              <View style={styles.inputContainer}>
+                <TextInput
+                  style={styles.input}
+                  value={editNote}
+                  onChangeText={setEditNote}
+                  editable={!isSubmitting}
+                  placeholder="Optional Note"
+                />
+              </View>
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity style={[styles.actionBtn, styles.deleteBtn]} onPress={handleDelete} disabled={isSubmitting}>
+                  <Text style={styles.deleteBtnText}>Delete</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity style={[styles.actionBtn, styles.saveBtn]} onPress={handleUpdate} disabled={isSubmitting}>
+                  {isSubmitting ? <ActivityIndicator color={Theme.colors.white} /> : <Text style={styles.saveBtnText}>Save</Text>}
+                </TouchableOpacity>
+              </View>
+              
+              <TouchableOpacity style={styles.closeModalBtn} onPress={() => setSelectedDebt(null)}>
+                <Text style={styles.closeModalText}>Cancel</Text>
               </TouchableOpacity>
             </View>
-            
-            <TouchableOpacity style={styles.closeModalBtn} onPress={() => setSelectedDebt(null)}>
-              <Text style={styles.closeModalText}>Cancel</Text>
-            </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
       <PhoneOnboardingModal 
         visible={showPhoneModal} 

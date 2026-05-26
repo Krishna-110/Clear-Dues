@@ -32,7 +32,7 @@ const PhoneOnboardingModal = ({ visible, onComplete }) => {
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <View style={{ flex: 1 }}>
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
             style={styles.overlay}
           >
             <View style={styles.content}>
