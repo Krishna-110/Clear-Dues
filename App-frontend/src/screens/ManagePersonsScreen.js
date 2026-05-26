@@ -392,6 +392,7 @@ const ManagePersonsScreen = () => {
               )}
             </TouchableOpacity>
           </View>
+          </View>
         </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
