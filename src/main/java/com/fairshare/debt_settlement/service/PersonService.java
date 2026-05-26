@@ -198,6 +198,7 @@ public class PersonService {
                     debtRepository.flush();
 
                     // 3. Delete the proxy person
+                    personRepository.removeAllFriendships(existingPerson.getId());
                     personRepository.delete(existingPerson);
                     personRepository.flush();
                 } else {
@@ -234,6 +235,7 @@ public class PersonService {
 
         // 3. If the user is an offline proxy user, we delete them entirely
         if (friendToDelete.getEmail().endsWith("@cleardues.local")) {
+            personRepository.removeAllFriendships(friendToDelete.getId());
             personRepository.delete(friendToDelete);
         } else {
             personRepository.save(friendToDelete);
