@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { Modal, View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import { Theme } from '../theme/Theme';
 import { Phone } from 'lucide-react-native';
 import { useStore } from '../store/useStore';
@@ -29,43 +29,50 @@ const PhoneOnboardingModal = ({ visible, onComplete }) => {
 
   return (
     <Modal visible={visible} transparent={true} animationType="fade">
-      <View style={styles.overlay}>
-        <View style={styles.content}>
-          <View style={styles.iconContainer}>
-            <Phone size={32} color={Theme.colors.primary} />
-          </View>
-          
-          <Text style={styles.title}>Complete Your Profile</Text>
-          <Text style={styles.subtitle}>
-            Please enter your phone number to help your friends find you and settle debts easily.
-          </Text>
-
-          <View style={styles.inputContainer}>
-            <Text style={styles.prefix}>+91</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="9876543210"
-              keyboardType="phone-pad"
-              maxLength={10}
-              value={phoneNumber}
-              onChangeText={setPhoneNumber}
-              editable={!isSubmitting}
-            />
-          </View>
-
-          <TouchableOpacity 
-            style={[styles.button, isSubmitting && { opacity: 0.7 }]} 
-            onPress={handleSubmit}
-            disabled={isSubmitting}
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <View style={{ flex: 1 }}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.overlay}
           >
-            {isSubmitting ? (
-              <ActivityIndicator color={Theme.colors.white} />
-            ) : (
-              <Text style={styles.buttonText}>Continue</Text>
-            )}
-          </TouchableOpacity>
+            <View style={styles.content}>
+              <View style={styles.iconContainer}>
+                <Phone size={32} color={Theme.colors.primary} />
+              </View>
+              
+              <Text style={styles.title}>Complete Your Profile</Text>
+              <Text style={styles.subtitle}>
+                Please enter your phone number to help your friends find you and settle debts easily.
+              </Text>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.prefix}>+91</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="9876543210"
+                  keyboardType="phone-pad"
+                  maxLength={10}
+                  value={phoneNumber}
+                  onChangeText={setPhoneNumber}
+                  editable={!isSubmitting}
+                />
+              </View>
+
+              <TouchableOpacity 
+                style={[styles.button, isSubmitting && { opacity: 0.7 }]} 
+                onPress={handleSubmit}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator color={Theme.colors.white} />
+                ) : (
+                  <Text style={styles.buttonText}>Continue</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
         </View>
-      </View>
+      </TouchableWithoutFeedback>
     </Modal>
   );
 };
