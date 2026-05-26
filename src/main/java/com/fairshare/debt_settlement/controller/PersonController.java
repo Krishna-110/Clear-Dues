@@ -2,6 +2,7 @@ package com.fairshare.debt_settlement.controller;
 
 import com.fairshare.debt_settlement.model.Person;
 import com.fairshare.debt_settlement.service.PersonService;
+import com.fairshare.debt_settlement.dto.CreatePersonRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -20,7 +21,7 @@ public class PersonController {
 
     // POST /api/persons - Add a new person
     @PostMapping
-    public ResponseEntity<Person> addPerson(@RequestBody com.fairshare.debt_settlement.dto.CreatePersonRequest request) {
+    public ResponseEntity<Person> addPerson(@RequestBody CreatePersonRequest request) {
         Person savedPerson = personService.addPerson(request);
         return ResponseEntity.ok(savedPerson);
     }
@@ -61,7 +62,7 @@ public class PersonController {
 
     // POST /api/persons/sync-batch
     @PostMapping("/sync-batch")
-    public ResponseEntity<List<Person>> syncBatchContacts(@RequestBody List<com.fairshare.debt_settlement.dto.CreatePersonRequest> contacts) {
+    public ResponseEntity<List<Person>> syncBatchContacts(@RequestBody List<CreatePersonRequest> contacts) {
         return ResponseEntity.ok(personService.syncContactsBatch(contacts));
     }
 

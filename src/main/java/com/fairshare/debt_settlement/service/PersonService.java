@@ -157,6 +157,7 @@ public class PersonService {
     }
 
     @org.springframework.transaction.annotation.Transactional
+    @SuppressWarnings("null")
     public Person updateMyPhone(String phone) {
         Person currentUser = getCurrentUser();
         String normalized = normalizePhoneNumber(phone);
