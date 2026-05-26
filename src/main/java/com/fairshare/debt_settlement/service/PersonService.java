@@ -2,6 +2,7 @@ package com.fairshare.debt_settlement.service;
 
 import com.fairshare.debt_settlement.dto.CreatePersonRequest;
 import com.fairshare.debt_settlement.model.Person;
+import com.fairshare.debt_settlement.model.Debt;
 import com.fairshare.debt_settlement.repository.DebtRepository;
 import com.fairshare.debt_settlement.repository.PersonRepository;
 import lombok.AllArgsConstructor;
@@ -155,12 +156,55 @@ public class PersonService {
         return cleaned;
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public Person updateMyPhone(String phone) {
         Person currentUser = getCurrentUser();
         String normalized = normalizePhoneNumber(phone);
         if (normalized == null || normalized.length() != 10) {
             throw new RuntimeException("Invalid phone number format. Please enter 10 digits.");
         }
+
+        // Check if there is another person with this phone number
+        Optional<Person> existingPersonOpt = personRepository.findByPhoneNumber(normalized);
+        if (existingPersonOpt.isPresent()) {
+            Person existingPerson = existingPersonOpt.get();
+            if (!existingPerson.getId().equals(currentUser.getId())) {
+                // If the existing user is a placeholder/proxy, we merge them
+                if (existingPerson.getEmail().endsWith("@cleardues.local")) {
+                    
+                    // 1. Migrate friendships
+                    for (Person friend : new ArrayList<>(existingPerson.getFriends())) {
+                        friend.getFriends().remove(existingPerson);
+                        existingPerson.getFriends().remove(friend);
+                        personRepository.save(friend);
+                        
+                        establishMutualFriendship(currentUser, friend);
+                    }
+                    
+                    // 2. Migrate debts
+                    List<Debt> debtorDebts = debtRepository.findByDebtorId(existingPerson.getId());
+                    for (Debt debt : debtorDebts) {
+                        debt.setDebtor(currentUser);
+                    }
+                    debtRepository.saveAll(debtorDebts);
+
+                    List<Debt> creditorDebts = debtRepository.findByCreditorId(existingPerson.getId());
+                    for (Debt debt : creditorDebts) {
+                        debt.setCreditor(currentUser);
+                    }
+                    debtRepository.saveAll(creditorDebts);
+                    
+                    debtRepository.flush();
+
+                    // 3. Delete the proxy person
+                    personRepository.delete(existingPerson);
+                    personRepository.flush();
+                } else {
+                    throw new RuntimeException("This phone number is already registered by another user.");
+                }
+            }
+        }
+
         currentUser.setPhoneNumber(normalized);
         return personRepository.save(currentUser);
     }

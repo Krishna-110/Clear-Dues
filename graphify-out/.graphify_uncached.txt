@@ -46,6 +46,7 @@ D:\java\debt-settlement\src\main\java\com\fairshare\debt_settlement\service\SmsS
 D:\java\debt-settlement\src\test\java\com\fairshare\debt_settlement\DebtSettlementApplicationTests.java
 D:\java\debt-settlement\HELP.md
 D:\java\debt-settlement\README.md
+D:\java\debt-settlement\graphify-out\memory\query_20260522_071055_why_does_personcontroller_connect_person_api_contr.md
 D:\java\debt-settlement\App-frontend\assets\adaptive-icon.png
 D:\java\debt-settlement\App-frontend\assets\favicon.png
 D:\java\debt-settlement\App-frontend\assets\icon.png
