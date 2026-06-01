@@ -15,6 +15,10 @@ const SettlementScreen = () => {
     fetchData();
   }, [fetchData]);
 
+  const displayedSettlements = settlements.filter(
+    s => s.fromPhone === user?.phoneNumber || s.toPhone === user?.phoneNumber
+  );
+
   const handleCompleteSettlement = async () => {
     Alert.alert(
       'Settle All Dues',
@@ -56,7 +60,7 @@ const SettlementScreen = () => {
 
 
       <FlatList
-        data={settlements.filter(s => s.fromPhone === user?.phoneNumber || s.toPhone === user?.phoneNumber)}
+        data={displayedSettlements}
         keyExtractor={(item, index) => index.toString()}
         renderItem={({ item }) => (
           <View style={styles.settlementItem}>
@@ -88,25 +92,27 @@ const SettlementScreen = () => {
         }
       />
 
-      <View style={styles.actionHeader} pointerEvents="box-none">
-        <TouchableOpacity
-          style={[
-            styles.settleAllButton, 
-            (settlements.length === 0 || isProcessing) && styles.disabledButton
-          ]}
-          onPress={handleCompleteSettlement}
-          disabled={settlements.length === 0 || isProcessing}
-        >
-          {isProcessing ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <View style={styles.buttonContent}>
-              <CheckCircle2 size={28} color="#fff" />
-              <Text style={styles.settleAllText}>LET'S{"\n"}SETTLE</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-      </View>
+      {displayedSettlements.length > 0 && (
+        <View style={styles.actionHeader} pointerEvents="box-none">
+          <TouchableOpacity
+            style={[
+              styles.settleAllButton, 
+              (settlements.length === 0 || isProcessing) && styles.disabledButton
+            ]}
+            onPress={handleCompleteSettlement}
+            disabled={settlements.length === 0 || isProcessing}
+          >
+            {isProcessing ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <View style={styles.buttonContent}>
+                <CheckCircle2 size={28} color="#fff" />
+                <Text style={styles.settleAllText}>LET'S{"\n"}SETTLE</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
     </SafeAreaView>
   );
 };
