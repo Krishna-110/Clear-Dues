@@ -14,11 +14,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 /**
- * Verifies that settlement suggestions are PAIRWISE (a direct net between two people)
- * and never routed through a third person. The amount shown for "A pays B" must equal
- * exactly what A owes B, so that recording that repayment squares them.
+ * Verifies the OPTIMIZED (global min-cash-flow) settlement suggestions: chains are
+ * collapsed so pass-through people drop out and the result is the fewest transfers.
  */
-class SettlementServicePairwiseTest {
+class SettlementServiceOptimizationTest {
 
     private DebtRepository debtRepository;
     private SettlementService settlementService;
@@ -48,10 +47,34 @@ class SettlementServicePairwiseTest {
     }
 
     @Test
+    void chainCollapses_passThroughPersonDropsOut() {
+        Person skylar = person(1L, "Skylar", "1111111111");
+        Person suket = person(2L, "Suket", "2222222222");
+        Person morpheus = person(3L, "Morpheus", "3333333333");
+        // Skylar owes Suket 500, Suket owes Morpheus 500.
+        // Optimized: Suket is a pass-through -> Skylar pays Morpheus 500 directly.
+        when(debtRepository.findAll()).thenReturn(List.of(
+                debt(1L, skylar, suket, 500.0, "PENDING"),
+                debt(2L, suket, morpheus, 500.0, "PENDING")
+        ));
+
+        List<SettlementResponse> result = settlementService.settleDebts();
+
+        assertThat(result).hasSize(1);
+        SettlementResponse s = result.get(0);
+        assertThat(s.getFromPhone()).isEqualTo("1111111111"); // Skylar pays
+        assertThat(s.getToPhone()).isEqualTo("3333333333");   // Morpheus receives
+        assertThat(s.getAmount()).isEqualTo(500.0);
+        // Suket should not appear at all - he nets to zero.
+        assertThat(result).noneMatch(r ->
+                r.getFromPhone().equals("2222222222") || r.getToPhone().equals("2222222222"));
+    }
+
+    @Test
     void mutualDebts_netToASingleSuggestion() {
         Person a = person(1L, "A", "1111111111");
         Person b = person(2L, "B", "2222222222");
-        // A owes B 500, B owes A 200 -> net: A owes B 300
+        // A owes B 500, B owes A 200 -> net A owes B 300
         when(debtRepository.findAll()).thenReturn(List.of(
                 debt(1L, a, b, 500.0, "PENDING"),
                 debt(2L, b, a, 200.0, "PENDING")
@@ -61,38 +84,13 @@ class SettlementServicePairwiseTest {
 
         assertThat(result).hasSize(1);
         SettlementResponse s = result.get(0);
-        assertThat(s.getFromPhone()).isEqualTo("1111111111"); // A pays
-        assertThat(s.getToPhone()).isEqualTo("2222222222");   // B receives
+        assertThat(s.getFromPhone()).isEqualTo("1111111111");
+        assertThat(s.getToPhone()).isEqualTo("2222222222");
         assertThat(s.getAmount()).isEqualTo(300.0);
     }
 
     @Test
-    void chainOfDebts_staysPairwise_noRoutingThroughThirdPerson() {
-        Person a = person(1L, "A", "1111111111");
-        Person b = person(2L, "B", "2222222222");
-        Person c = person(3L, "C", "3333333333");
-        // A owes B 500, B owes C 500.
-        // A global optimizer would collapse this to "A pays C 500" (routing through B).
-        // Pairwise keeps both real debts so each number is settleable directly.
-        when(debtRepository.findAll()).thenReturn(List.of(
-                debt(1L, a, b, 500.0, "PENDING"),
-                debt(2L, b, c, 500.0, "PENDING")
-        ));
-
-        List<SettlementResponse> result = settlementService.settleDebts();
-
-        assertThat(result).hasSize(2);
-        boolean routedAtoC = result.stream().anyMatch(s ->
-                s.getFromPhone().equals("1111111111") && s.getToPhone().equals("3333333333"));
-        assertThat(routedAtoC).isFalse();
-        assertThat(result).anyMatch(s ->
-                s.getFromPhone().equals("1111111111") && s.getToPhone().equals("2222222222") && s.getAmount() == 500.0);
-        assertThat(result).anyMatch(s ->
-                s.getFromPhone().equals("2222222222") && s.getToPhone().equals("3333333333") && s.getAmount() == 500.0);
-    }
-
-    @Test
-    void fullySquaredPair_producesNoSuggestion() {
+    void everyoneSquared_producesNoSuggestions() {
         Person a = person(1L, "A", "1111111111");
         Person b = person(2L, "B", "2222222222");
         // equal and opposite -> squared

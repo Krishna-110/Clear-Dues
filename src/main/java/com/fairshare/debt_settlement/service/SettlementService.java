@@ -18,12 +18,14 @@ public class SettlementService {
     }
 
     /**
-     * Returns the outstanding balance between every pair of people, netted directly.
+     * Returns the OPTIMIZED set of payments that squares everyone with the fewest
+     * transfers (greedy min-cash-flow). This collapses chains: if Skylar owes Suket
+     * and Suket owes Morpheus the same amount, Suket drops out and the suggestion
+     * becomes "Skylar pays Morpheus" directly.
      *
-     * This is intentionally PAIRWISE (no routing through third parties): the amount
-     * shown for "A should pay B" is exactly what A owes B once their mutual debts are
-     * combined. That way the number on screen always matches what recording a repayment
-     * will settle.
+     * This is a read-only suggestion. Recording the corresponding payment in the app
+     * (which adds the matching debt) makes everyone's net balance zero, so the
+     * suggestion disappears - i.e. it settles as expected.
      */
     public List<SettlementResponse> settleDebts() {
         Set<Long> seen = new HashSet<>();
@@ -34,9 +36,8 @@ public class SettlementService {
                 .filter(d -> seen.add(d.getId())) // guard against any JPA join doubling
                 .collect(Collectors.toList());
 
-        // Net balance per unordered pair. Key = "loPhone|hiPhone";
-        // value = how much loPhone owes hiPhone (may be negative).
-        Map<String, Double> pairNet = new HashMap<>();
+        // Net balance per person (negative = owes money, positive = is owed money).
+        Map<String, Double> balances = new HashMap<>();
         Map<String, String> nameByPhone = new HashMap<>();
 
         for (Debt d : pending) {
@@ -47,43 +48,57 @@ public class SettlementService {
             nameByPhone.put(debtorPhone, d.getDebtor().getName());
             nameByPhone.put(creditorPhone, d.getCreditor().getName());
 
-            // debtor owes creditor d.amount
-            if (debtorPhone.compareTo(creditorPhone) < 0) {
-                pairNet.merge(debtorPhone + "|" + creditorPhone, d.getAmount(), Double::sum);
+            balances.merge(debtorPhone, -d.getAmount(), Double::sum);
+            balances.merge(creditorPhone, d.getAmount(), Double::sum);
+        }
+
+        // Smallest (most negative) balance first for debtors; largest first for creditors.
+        PriorityQueue<PersonBalance> debtors = new PriorityQueue<>(Comparator.comparingDouble(pb -> pb.balance));
+        PriorityQueue<PersonBalance> creditors = new PriorityQueue<>((a, b) -> Double.compare(b.balance, a.balance));
+
+        for (Map.Entry<String, Double> e : balances.entrySet()) {
+            double bal = e.getValue();
+            if (Math.abs(bal) < 0.01) continue; // already square -> drops out
+            PersonBalance pb = new PersonBalance(nameByPhone.get(e.getKey()), e.getKey(), bal);
+            if (bal < 0) {
+                debtors.add(pb);
             } else {
-                pairNet.merge(creditorPhone + "|" + debtorPhone, -d.getAmount(), Double::sum);
+                creditors.add(pb);
             }
         }
 
         List<SettlementResponse> results = new ArrayList<>();
-        for (Map.Entry<String, Double> entry : pairNet.entrySet()) {
-            double net = entry.getValue();
-            if (Math.abs(net) < 0.01) continue; // squared up
+        while (!debtors.isEmpty() && !creditors.isEmpty()) {
+            PersonBalance debtor = debtors.poll();
+            PersonBalance creditor = creditors.poll();
 
-            String[] pair = entry.getKey().split("\\|");
-            String lo = pair[0];
-            String hi = pair[1];
-
-            String fromPhone;
-            String toPhone;
-            double amount;
-            if (net > 0) {
-                fromPhone = lo;  // lo owes hi
-                toPhone = hi;
-                amount = net;
-            } else {
-                fromPhone = hi;  // hi owes lo
-                toPhone = lo;
-                amount = -net;
-            }
+            double amount = Math.min(-debtor.balance, creditor.balance);
+            amount = Math.round(amount * 100.0) / 100.0;
 
             results.add(new SettlementResponse(
-                    nameByPhone.get(fromPhone), fromPhone,
-                    nameByPhone.get(toPhone), toPhone,
-                    Math.round(amount * 100.0) / 100.0
-            ));
+                    debtor.name, debtor.phone,
+                    creditor.name, creditor.phone,
+                    amount));
+
+            debtor.balance += amount;
+            creditor.balance -= amount;
+
+            if (debtor.balance < -0.01) debtors.add(debtor);
+            if (creditor.balance > 0.01) creditors.add(creditor);
         }
 
         return results;
+    }
+
+    private static class PersonBalance {
+        final String name;
+        final String phone;
+        double balance;
+
+        PersonBalance(String name, String phone, double balance) {
+            this.name = name;
+            this.phone = phone;
+            this.balance = balance;
+        }
     }
 }
