@@ -78,6 +78,15 @@ class DebtServiceSettlementTest {
         return d;
     }
 
+    private Debt between(Long id, Person debtor, Person creditor, double amount) {
+        Debt d = new Debt();
+        d.setId(id);
+        d.setDebtor(debtor);
+        d.setCreditor(creditor);
+        d.setAmount(amount);
+        return d;
+    }
+
     // "A paid B <amount>"  ->  debtor=B, creditor=A
     private CreateDebtRequest repaymentAtoB(double amount) {
         CreateDebtRequest r = new CreateDebtRequest();
@@ -137,6 +146,44 @@ class DebtServiceSettlementTest {
         assertThat(net.getCreditor()).isEqualTo(a);
         assertThat(net.getAmount()).isEqualTo(200.0);
         verify(smsService, never()).sendDebtNotification(anyString(), anyString(), anyString(), anyBoolean(), anyString());
+    }
+
+    @Test
+    void settleFullyBalancedGroups_crossesOutAClosedCycle() {
+        // Skylar -> Suket 500, Suket -> Morpheus 500, Morpheus -> Skylar 500 (the settle payment).
+        // The whole group nets to zero, so all three debts should be marked SETTLED.
+        Person skylar = person(10L, "Skylar", "9999999999");
+        Person suket = person(11L, "Suket", "8888888888");
+        Person morpheus = person(12L, "Morpheus", "7777777777");
+        Debt d1 = between(201L, skylar, suket, 500.0);
+        Debt d2 = between(202L, suket, morpheus, 500.0);
+        Debt d3 = between(203L, morpheus, skylar, 500.0);
+        when(debtRepository.findAll()).thenReturn(List.of(d1, d2, d3));
+
+        java.util.Set<Long> settled = debtService.settleFullyBalancedGroups();
+
+        assertThat(settled).containsExactlyInAnyOrder(201L, 202L, 203L);
+        assertThat(d1.getStatus()).isEqualTo("SETTLED");
+        assertThat(d2.getStatus()).isEqualTo("SETTLED");
+        assertThat(d3.getStatus()).isEqualTo("SETTLED");
+        assertThat(d1.getSettledAt()).isNotNull();
+    }
+
+    @Test
+    void settleFullyBalancedGroups_leavesAnUnbalancedGroupUntouched() {
+        // Only the two chain debts exist, no closing payment yet -> nobody is squared.
+        Person skylar = person(10L, "Skylar", "9999999999");
+        Person suket = person(11L, "Suket", "8888888888");
+        Person morpheus = person(12L, "Morpheus", "7777777777");
+        Debt d1 = between(201L, skylar, suket, 500.0);
+        Debt d2 = between(202L, suket, morpheus, 500.0);
+        when(debtRepository.findAll()).thenReturn(List.of(d1, d2));
+
+        java.util.Set<Long> settled = debtService.settleFullyBalancedGroups();
+
+        assertThat(settled).isEmpty();
+        assertThat(d1.getStatus()).isEqualTo("PENDING");
+        assertThat(d2.getStatus()).isEqualTo("PENDING");
     }
 
     @Test
