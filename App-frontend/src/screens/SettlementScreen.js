@@ -7,7 +7,7 @@ import { HandCoins, Sparkles, CheckCircle2 } from 'lucide-react-native';
 import TransactionCard from '../components/TransactionCard';
 
 const SettlementScreen = () => {
-  const { settlements, fetchData, isLoading, user } = useStore();
+  const { settlements, debts, fetchData, isLoading, user } = useStore();
 
   useEffect(() => {
     fetchData();
@@ -15,6 +15,14 @@ const SettlementScreen = () => {
 
   const displayedSettlements = settlements.filter(
     s => s.fromPhone === user?.phoneNumber || s.toPhone === user?.phoneNumber
+  );
+
+  // Does the user still have open debts even though the optimizer has nothing for them?
+  // That happens when they're a "middleman" who nets to zero - the optimizer routes
+  // around them, so they have nothing to do but their debts aren't gone yet.
+  const hasPendingDebts = debts.some(
+    d => d.status === 'PENDING'
+      && (d.debtor?.phoneNumber === user?.phoneNumber || d.creditor?.phoneNumber === user?.phoneNumber)
   );
 
   return (
@@ -58,8 +66,20 @@ const SettlementScreen = () => {
             <View style={styles.successIconOuter}>
                <CheckCircle2 size={60} color={Theme.colors.secondary} />
             </View>
-            <Text style={styles.emptyText}>All debts are optimized and settled!</Text>
-            <Text style={styles.emptySubtext}>Your accounts are currently squared up. To settle a due, record the repayment in the Record tab.</Text>
+            {hasPendingDebts ? (
+              <>
+                <Text style={styles.emptyText}>You're balanced 🎉</Text>
+                <Text style={styles.emptySubtext}>
+                  You owe and are owed the same amount, so there's nothing for you to pay.
+                  Your open debts will clear automatically once the others settle up. See them on the Dashboard.
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.emptyText}>All debts are optimized and settled!</Text>
+                <Text style={styles.emptySubtext}>Your accounts are currently squared up. To settle a due, record the repayment in the Record tab.</Text>
+              </>
+            )}
           </View>
         }
       />

@@ -11,7 +11,7 @@ import PhoneOnboardingModal from '../components/PhoneOnboardingModal';
 import { requestContactPermission } from '../services/ContactService';
 
 const DashboardScreen = ({ navigation }) => {
-  const { debts, settlements, fetchData, logout, isLoading, user, updateDebt, deleteDebt } = useStore();
+  const { debts, fetchData, logout, isLoading, user, updateDebt, deleteDebt } = useStore();
   
   const [selectedDebt, setSelectedDebt] = useState(null);
   const [editAmount, setEditAmount] = useState('');
@@ -81,33 +81,42 @@ const DashboardScreen = ({ navigation }) => {
     ]);
   };
 
-  // All balances are based on the netted (pairwise) settlement figures so every number
-  // on screen agrees with what recording a repayment will actually settle.
-  const totalOwe = settlements
-    .filter(s => s.fromPhone === user?.phoneNumber)
-    .reduce((acc, s) => acc + s.amount, 0);
+  // The user's OWN position, computed from the real debts (netted per person). This is
+  // deliberately independent of the optimized Settlements tab: the dashboard shows what
+  // YOU actually owe and are owed, even when the global optimizer routes around you.
+  const myPhone = user?.phoneNumber;
 
-  const totalGet = settlements
-    .filter(s => s.toPhone === user?.phoneNumber)
-    .reduce((acc, s) => acc + s.amount, 0);
+  const balanceByPhone = {}; // phone -> { name, amount }  (amount > 0: they owe you; < 0: you owe them)
+  debts
+    .filter(d => d.status === 'PENDING'
+      && (d.debtor?.phoneNumber === myPhone || d.creditor?.phoneNumber === myPhone))
+    .forEach(d => {
+      const youAreCreditor = d.creditor?.phoneNumber === myPhone;
+      const other = youAreCreditor ? d.debtor : d.creditor;
+      if (!other?.phoneNumber) return;
+      if (!balanceByPhone[other.phoneNumber]) {
+        balanceByPhone[other.phoneNumber] = { name: other.name, amount: 0 };
+      }
+      balanceByPhone[other.phoneNumber].amount += youAreCreditor ? d.amount : -d.amount;
+    });
 
-  // Total outstanding the user is involved in (net), not a raw sum of stacked rows.
-  const userTotalDebts = totalOwe + totalGet;
+  const myBalances = Object.entries(balanceByPhone)
+    .map(([phone, v]) => ({ phone, name: v.name, amount: v.amount }))
+    .filter(b => Math.abs(b.amount) > 0.01)
+    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
 
-  const pendingAmount = Math.abs(totalGet - totalOwe);
+  const totalGet = myBalances.filter(b => b.amount > 0).reduce((acc, b) => acc + b.amount, 0);
+  const totalOwe = myBalances.filter(b => b.amount < 0).reduce((acc, b) => acc - b.amount, 0);
   const netBalance = totalGet - totalOwe;
-    
-  // Total Settled volume = Sum of all SETTLED status debts
+  const userTotalDebts = totalOwe; // "Total Debts" = what YOU owe
+
+  // Total Settled volume = sum of the user's SETTLED debts.
   const totalSettled = debts
-    .filter(d => 
-      (d.debtor?.phoneNumber === user?.phoneNumber || d.creditor?.phoneNumber === user?.phoneNumber) && 
+    .filter(d =>
+      (d.debtor?.phoneNumber === myPhone || d.creditor?.phoneNumber === myPhone) &&
       d.status === 'SETTLED'
     )
     .reduce((acc, d) => acc + d.amount, 0);
-
-  // Success Indicator: If user has PENDING records but their NET impact is 0
-  const hasRawPending = debts.some(d => (d.debtor?.phoneNumber === user?.phoneNumber || d.creditor?.phoneNumber === user?.phoneNumber) && d.status === 'PENDING');
-  const isAllSquared = hasRawPending && totalOwe === 0 && totalGet === 0;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -161,31 +170,31 @@ const DashboardScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Recent Activity Section */}
+        {/* Your Balances Section - who you owe and who owes you (netted per person) */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Recent Activity</Text>
+          <Text style={styles.sectionTitle}>Your Balances</Text>
           <TouchableOpacity onPress={() => navigation.navigate('Settlements')}>
-            <Text style={styles.sectionAction}>View All</Text>
+            <Text style={styles.sectionAction}>Optimize</Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.settlementList}>
-          {settlements
-            .filter(s => s.fromPhone === user?.phoneNumber || s.toPhone === user?.phoneNumber)
-            .slice(0, 5)
-            .map((s, index) => (
-            <TransactionCard 
-              key={index}
-              debtor={s.from}
-              creditor={s.to}
-              amount={s.amount}
-              status="PENDING" // Settlements are always pending suggestions
-            />
-          ))}
+          {myBalances.map((b, index) => {
+            const theyOweYou = b.amount > 0;
+            return (
+              <TransactionCard
+                key={index}
+                debtor={theyOweYou ? b.name : 'You'}
+                creditor={theyOweYou ? 'You' : b.name}
+                amount={Math.abs(b.amount)}
+                status="PENDING"
+              />
+            );
+          })}
 
-          {settlements.length === 0 && (
+          {myBalances.length === 0 && (
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No recent activity found.</Text>
+              <Text style={styles.emptyText}>You're all squared up! 🎉</Text>
             </View>
           )}
         </View>
