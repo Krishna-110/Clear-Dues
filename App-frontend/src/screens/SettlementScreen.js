@@ -1,15 +1,13 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, Text, StyleSheet, FlatList, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStore } from '../store/useStore';
 import { Theme } from '../theme/Theme';
 import { HandCoins, Sparkles, CheckCircle2 } from 'lucide-react-native';
 import TransactionCard from '../components/TransactionCard';
-import apiService from '../services/apiService';
 
 const SettlementScreen = () => {
   const { settlements, fetchData, isLoading, user } = useStore();
-  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -18,32 +16,6 @@ const SettlementScreen = () => {
   const displayedSettlements = settlements.filter(
     s => s.fromPhone === user?.phoneNumber || s.toPhone === user?.phoneNumber
   );
-
-  const handleCompleteSettlement = async () => {
-    Alert.alert(
-      'Settle All Dues',
-      'This will mark all current transactions as settled and simplify the balances for everyone. This action cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Proceed',
-          style: 'destructive',
-          onPress: async () => {
-            setIsProcessing(true);
-            try {
-              await apiService.completeSettlement();
-              await fetchData();
-              Alert.alert('Success', 'All accounts have been settled and history has been updated.');
-            } catch (error) {
-              Alert.alert('Error', 'Failed to complete settlement.');
-            } finally {
-              setIsProcessing(false);
-            }
-          }
-        }
-      ]
-    );
-  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -87,32 +59,10 @@ const SettlementScreen = () => {
                <CheckCircle2 size={60} color={Theme.colors.secondary} />
             </View>
             <Text style={styles.emptyText}>All debts are optimized and settled!</Text>
-            <Text style={styles.emptySubtext}>Your accounts are currently squared up. Any new activity will trigger a new optimization.</Text>
+            <Text style={styles.emptySubtext}>Your accounts are currently squared up. To settle a due, record the repayment in the Record tab.</Text>
           </View>
         }
       />
-
-      {displayedSettlements.length > 0 && (
-        <View style={styles.actionHeader} pointerEvents="box-none">
-          <TouchableOpacity
-            style={[
-              styles.settleAllButton, 
-              (settlements.length === 0 || isProcessing) && styles.disabledButton
-            ]}
-            onPress={handleCompleteSettlement}
-            disabled={settlements.length === 0 || isProcessing}
-          >
-            {isProcessing ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <View style={styles.buttonContent}>
-                <CheckCircle2 size={28} color="#fff" />
-                <Text style={styles.settleAllText}>LET'S{"\n"}SETTLE</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        </View>
-      )}
     </SafeAreaView>
   );
 };
@@ -143,48 +93,11 @@ const styles = StyleSheet.create({
     color: Theme.colors.textSecondary,
     lineHeight: 22,
   },
-  actionHeader: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 999,
-    elevation: 10,
-  },
-  settleAllButton: {
-    backgroundColor: Theme.colors.primary,
-    width: 130,
-    height: 130,
-    borderRadius: 65,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    ...Theme.shadow.medium,
-    borderWidth: 8,
-    borderColor: Theme.colors.primary + '40', // More visible semi-opaque border
-  },
-  buttonContent: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  disabledButton: {
-    backgroundColor: Theme.colors.textSecondary,
-    opacity: 0.5,
-  },
   successIconOuter: {
     marginBottom: Theme.spacing.md,
     backgroundColor: Theme.colors.secondary + '15',
     padding: Theme.spacing.lg,
     borderRadius: 50,
-  },
-  settleAllText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '900',
-    textAlign: 'center',
-    textTransform: 'uppercase',
-    letterSpacing: 1.5,
-    marginTop: Theme.spacing.xs,
-    lineHeight: 16,
   },
   list: {
     paddingBottom: Theme.spacing.xl,

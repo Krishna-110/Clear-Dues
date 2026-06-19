@@ -90,60 +90,6 @@ public class SettlementService {
         return results;
     }
 
-    /**
-     * Actions the settlement by marking all current PENDING debts as SETTLED
-     * and creating new simplified PENDING debts for any remaining balances.
-     */
-    @org.springframework.transaction.annotation.Transactional
-    public void completeSettlement(String userEmail) {
-        Person user = personRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new RuntimeException("Logged in user not found: " + userEmail));
-
-        // 1. Get the simplified transactions first (this is the global mathematical routing)
-        List<SettlementResponse> simplifiedTransactions = settleDebts();
-
-        // 2. Mark ALL existing PENDING debts as SETTLED. This moves the raw network into history.
-        List<Debt> pendingDebts = debtRepository.findAll().stream()
-                .filter(d -> "PENDING".equals(d.getStatus()))
-                .collect(java.util.stream.Collectors.toList());
-
-        java.time.LocalDateTime now = java.time.LocalDateTime.now();
-        String dateStr = now.format(java.time.format.DateTimeFormatter.ofPattern("MMM dd"));
-
-        for (Debt debt : pendingDebts) {
-            debt.setStatus("SETTLED");
-            debt.setSettledAt(now);
-            debt.setNote("Settled via Optimization by " + user.getName() + " (" + dateStr + ")");
-        }
-
-        if (!pendingDebts.isEmpty()) {
-            debtRepository.saveAll(pendingDebts);
-        }
-
-        // 3. Create new PENDING records for the optimized remainders
-        for (SettlementResponse tx : simplifiedTransactions) {
-            // If the person who owes money here is the one pushing the "Settle" button,
-            // they are paying it off right now! Do NOT create a carry-over debt for them.
-            if (tx.getFromPhone().equals(user.getPhoneNumber())) {
-                continue; 
-            }
-
-            Person debtor = personRepository.findByPhoneNumber(tx.getFromPhone())
-                    .orElseThrow(() -> new RuntimeException("Debtor not found with phone: " + tx.getFromPhone()));
-            Person creditor = personRepository.findByPhoneNumber(tx.getToPhone())
-                    .orElseThrow(() -> new RuntimeException("Creditor not found with phone: " + tx.getToPhone()));
-
-            Debt newDebt = new Debt();
-            newDebt.setDebtor(debtor);
-            newDebt.setCreditor(creditor);
-            newDebt.setAmount(tx.getAmount());
-            newDebt.setStatus("PENDING"); // CRITICAL FIX: Keep carry-over balances active!
-            newDebt.setSettledAt(null);
-            newDebt.setNote("Automated Settlement Result");
-            debtRepository.save(newDebt);
-        }
-    }
-
     private static class PersonBalance {
         String name;
         String idOrPhone; // Now using phone number

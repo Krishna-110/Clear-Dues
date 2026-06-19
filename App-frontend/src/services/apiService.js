@@ -98,10 +98,6 @@ export const apiService = {
     const response = await api.post('/persons/check-contacts', phoneNumbers);
     return response.data;
   },
-  completeSettlement: async () => {
-    const response = await api.post('/settle/complete');
-    return response.data;
-  },
 };
 
 export default apiService;

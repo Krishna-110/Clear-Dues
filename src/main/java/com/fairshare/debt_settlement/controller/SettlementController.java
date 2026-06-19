@@ -5,7 +5,6 @@ import com.fairshare.debt_settlement.service.SettlementService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -22,17 +21,10 @@ public class SettlementController {
         this.settlementService = settlementService;
     }
 
+    // Read-only: returns the optimized "who should pay whom" suggestions.
+    // Settlement is now done manually by recording the repayment in the app.
     @GetMapping
     public ResponseEntity<List<SettlementResponse>> settle() {
         return ResponseEntity.ok(settlementService.settleDebts());
-    }
-
-    @PostMapping("/complete")
-    public ResponseEntity<?> completeSettlement(java.security.Principal principal) {
-        if (principal == null) {
-            return ResponseEntity.status(401).body(java.util.Map.of("error", "User not authenticated"));
-        }
-        settlementService.completeSettlement(principal.getName());
-        return ResponseEntity.ok(java.util.Map.of("message", "Settlement completed and history updated."));
     }
 }
