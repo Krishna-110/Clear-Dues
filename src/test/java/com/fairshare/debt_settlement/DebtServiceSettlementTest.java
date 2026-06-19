@@ -16,18 +16,22 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 /**
- * Unit tests for the "record a repayment -> settle the existing debt" logic in DebtService.
+ * Unit tests for the "record a repayment -> net the whole relationship" logic in DebtService.
  * Repositories are mocked so no database is needed.
  *
  * Scenario base: A owes B 500 (a PENDING debt with debtor=A, creditor=B).
  * Recording the repayment means "A paid B": who-paid=A (creditor), who-owes=B (debtor),
  * so the new request is debtorPhone=B, creditorPhone=A.
+ *
+ * Recording collapses every pending debt between the two people into a single net balance,
+ * so paying the full amount squares them with no leftover rows.
  */
 class DebtServiceSettlementTest {
 
@@ -85,7 +89,7 @@ class DebtServiceSettlementTest {
     }
 
     @Test
-    void exactRepayment_marksExistingDebtSettled() {
+    void exactRepayment_squaresThePairWithNoLeftover() {
         Debt existing = aOwesB(500.0);
         when(debtRepository.findAll()).thenReturn(List.of(existing));
 
@@ -93,39 +97,46 @@ class DebtServiceSettlementTest {
 
         assertThat(existing.getStatus()).isEqualTo("SETTLED");
         assertThat(existing.getSettledAt()).isNotNull();
-        // no new debt stacked, no SMS for a settlement
-        verify(debtRepository, times(1)).save(existing);
+
+        // No new PENDING row should remain - they are square.
+        ArgumentCaptor<Debt> captor = ArgumentCaptor.forClass(Debt.class);
+        verify(debtRepository, atLeastOnce()).save(captor.capture());
+        boolean anyPending = captor.getAllValues().stream().anyMatch(d -> "PENDING".equals(d.getStatus()));
+        assertThat(anyPending).isFalse();
+
         verify(smsService, never()).sendDebtNotification(anyString(), anyString(), anyString(), anyBoolean(), anyString());
     }
 
     @Test
-    void partialRepayment_shrinksExistingDebtAndKeepsItPending() {
+    void partialRepayment_leavesReducedNetStillOwedToCreditor() {
         Debt existing = aOwesB(500.0);
         when(debtRepository.findAll()).thenReturn(List.of(existing));
 
         debtService.createDebt(repaymentAtoB(300.0));
 
-        assertThat(existing.getStatus()).isEqualTo("PENDING");
-        assertThat(existing.getAmount()).isEqualTo(200.0);
+        // Old row collapsed, replaced by a single net debt: A still owes B 200.
+        assertThat(existing.getStatus()).isEqualTo("SETTLED");
+        Debt net = capturePending();
+        assertThat(net.getDebtor()).isEqualTo(a);
+        assertThat(net.getCreditor()).isEqualTo(b);
+        assertThat(net.getAmount()).isEqualTo(200.0);
         verify(smsService, never()).sendDebtNotification(anyString(), anyString(), anyString(), anyBoolean(), anyString());
     }
 
     @Test
-    void overpayment_settlesExistingAndCreatesReverseDebtForRemainder() {
+    void overpayment_flipsTheBalanceToTheOtherPerson() {
         Debt existing = aOwesB(500.0);
         when(debtRepository.findAll()).thenReturn(List.of(existing));
 
         debtService.createDebt(repaymentAtoB(700.0));
 
         assertThat(existing.getStatus()).isEqualTo("SETTLED");
-
-        ArgumentCaptor<Debt> captor = ArgumentCaptor.forClass(Debt.class);
-        verify(debtRepository, atLeast(2)).save(captor.capture());
-        // the reverse leftover debt: B owes A 200, PENDING
-        Debt leftover = captor.getAllValues().stream()
-                .filter(d -> "PENDING".equals(d.getStatus()) && d.getDebtor() == b && d.getCreditor() == a)
-                .findFirst().orElseThrow();
-        assertThat(leftover.getAmount()).isEqualTo(200.0);
+        // B now owes A the 200 overpayment.
+        Debt net = capturePending();
+        assertThat(net.getDebtor()).isEqualTo(b);
+        assertThat(net.getCreditor()).isEqualTo(a);
+        assertThat(net.getAmount()).isEqualTo(200.0);
+        verify(smsService, never()).sendDebtNotification(anyString(), anyString(), anyString(), anyBoolean(), anyString());
     }
 
     @Test
@@ -140,5 +151,15 @@ class DebtServiceSettlementTest {
         assertThat(result.getAmount()).isEqualTo(500.0);
         // a brand-new debt notifies the debtor
         verify(smsService, times(1)).sendDebtNotification(eq("2222222222"), eq("A"), anyString(), anyBoolean(), eq("B"));
+    }
+
+    // Returns the (last) PENDING debt saved during the call.
+    private Debt capturePending() {
+        ArgumentCaptor<Debt> captor = ArgumentCaptor.forClass(Debt.class);
+        verify(debtRepository, atLeast(1)).save(captor.capture());
+        return captor.getAllValues().stream()
+                .filter(d -> "PENDING".equals(d.getStatus()))
+                .reduce((first, second) -> second)
+                .orElseThrow();
     }
 }

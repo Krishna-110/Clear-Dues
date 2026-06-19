@@ -6,7 +6,7 @@ import { Theme } from '../theme/Theme';
 import { Save, UserCircle, ChevronDown, Paperclip, UserPlus } from 'lucide-react-native';
 
 const AddDebtScreen = ({ navigation }) => {
-  const { persons, debts, addDebt, fetchData, user } = useStore();
+  const { persons, addDebt, fetchData, user } = useStore();
   const allParticipants = user ? [{ ...user, name: 'Myself (You)' }, ...persons] : persons;
   const [debtor, setDebtor] = useState(null);
   const [creditor, setCreditor] = useState(null);
@@ -15,20 +15,6 @@ const AddDebtScreen = ({ navigation }) => {
   const [showPersonModal, setShowPersonModal] = useState(false);
   const [selectingFor, setSelectingFor] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Finds an existing PENDING debt that this entry would repay, i.e. one in the
-  // opposite direction: where the selected "who paid" currently owes the selected "who owes".
-  const findMatchingDebt = () => {
-    if (!debtor || !creditor) return null;
-    return debts.find(d =>
-      d.status === 'PENDING' &&
-      d.debtor && d.creditor &&
-      ((d.debtor.id != null && creditor.id != null && d.debtor.id === creditor.id) ||
-       (d.debtor.phoneNumber && d.debtor.phoneNumber === creditor.phoneNumber)) &&
-      ((d.creditor.id != null && debtor.id != null && d.creditor.id === debtor.id) ||
-       (d.creditor.phoneNumber && d.creditor.phoneNumber === debtor.phoneNumber))
-    );
-  };
 
   const submitDebt = async () => {
     setIsSubmitting(true);
@@ -66,20 +52,6 @@ const AddDebtScreen = ({ navigation }) => {
 
     if (isNaN(parseFloat(amount))) {
       Alert.alert('Invalid Amount', 'Please enter a valid numeric amount.');
-      return;
-    }
-
-    // If this repayment matches an existing pending debt, confirm before settling it.
-    const match = findMatchingDebt();
-    if (match) {
-      Alert.alert(
-        'Settle Existing Debt?',
-        `${creditor.name} currently owes ${debtor.name} ₹${match.amount}. Recording this repayment of ₹${parseFloat(amount)} will settle that debt instead of adding a new one.`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Settle', onPress: submitDebt },
-        ]
-      );
       return;
     }
 

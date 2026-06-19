@@ -9,7 +9,6 @@ import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -30,47 +29,69 @@ public class DebtService {
         Person creditor = personRepository.findByPhoneNumber(creditorPhone)
                 .orElseThrow(() -> new RuntimeException("Creditor not found with phone: " + request.getCreditorPhone()));
 
-        // Find existing PENDING debts this payment repays: debts in the OPPOSITE
-        // direction (where the new creditor was the one who owed the new debtor).
-        List<Debt> opposingDebts = debtRepository.findAll().stream()
+        double amount = request.getAmount();
+
+        // Every PENDING debt between these two people, in either direction.
+        List<Debt> pairDebts = debtRepository.findAll().stream()
                 .filter(d -> "PENDING".equals(d.getStatus()))
                 .filter(d -> d.getDebtor() != null && d.getCreditor() != null)
-                .filter(d -> d.getDebtor().getId().equals(creditor.getId())
-                          && d.getCreditor().getId().equals(debtor.getId()))
-                .sorted(Comparator.comparing(Debt::getId)) // settle oldest first
+                .filter(d -> isSamePair(d, debtor, creditor))
                 .collect(Collectors.toList());
 
-        // No matching debt -> behave exactly like before: new pending debt + SMS.
-        if (opposingDebts.isEmpty()) {
-            return saveNewPendingDebt(debtor, creditor, request.getAmount(), request.getNote(), true);
+        // Does the creditor currently owe the debtor anything? If so, this entry is a
+        // repayment/netting against that balance rather than a brand-new expense.
+        boolean hasOpposing = pairDebts.stream().anyMatch(
+                d -> d.getDebtor().getId().equals(creditor.getId())
+                  && d.getCreditor().getId().equals(debtor.getId()));
+
+        // Pure new expense (nothing owed the other way) -> just record it and notify.
+        if (!hasOpposing) {
+            return saveNewPendingDebt(debtor, creditor, amount, request.getNote(), true);
         }
 
-        // A repayment matched -> settle the existing debt(s) instead of stacking clutter.
-        double remaining = request.getAmount();
-        LocalDateTime now = LocalDateTime.now();
-        Debt lastTouched = null;
-        for (Debt d : opposingDebts) {
-            if (remaining <= 0.0) break;
-            if (remaining >= d.getAmount()) {
-                // Fully repaid -> mark this debt SETTLED.
-                remaining -= d.getAmount();
-                d.setStatus("SETTLED");
-                d.setSettledAt(now);
-                d.setNote("Settled by repayment from " + creditor.getName());
+        // Netting event: collapse the WHOLE relationship into a single net balance so the
+        // pair never carries stacked/contradictory rows. "net" = how much `debtor` owes
+        // `creditor` once this entry and every existing pending debt are combined.
+        double net = amount;
+        for (Debt d : pairDebts) {
+            if (d.getDebtor().getId().equals(debtor.getId())) {
+                net += d.getAmount(); // debtor already owed creditor
             } else {
-                // Partial repayment -> shrink the outstanding debt.
-                d.setAmount(d.getAmount() - remaining);
-                remaining = 0.0;
+                net -= d.getAmount(); // creditor owed debtor
             }
-            lastTouched = debtRepository.save(d);
         }
 
-        // Overpaid -> the extra flips the balance the other way as a new pending debt.
-        if (remaining > 0.0) {
-            return saveNewPendingDebt(debtor, creditor, remaining, request.getNote(), false);
+        // Wipe the old rows; they're now folded into the net.
+        LocalDateTime now = LocalDateTime.now();
+        Debt lastSettled = null;
+        for (Debt d : pairDebts) {
+            d.setStatus("SETTLED");
+            d.setSettledAt(now);
+            lastSettled = debtRepository.save(d);
         }
 
-        return lastTouched;
+        net = round(net);
+        if (Math.abs(net) < 0.01) {
+            // Fully squared - nothing outstanding between them.
+            return lastSettled;
+        }
+        if (net > 0) {
+            return saveNewPendingDebt(debtor, creditor, net, request.getNote(), false);
+        }
+        // Balance flipped: the creditor now owes the debtor the leftover.
+        return saveNewPendingDebt(creditor, debtor, -net, request.getNote(), false);
+    }
+
+    // True when the debt is between exactly these two people, regardless of direction.
+    private boolean isSamePair(Debt d, Person p1, Person p2) {
+        Long a = d.getDebtor().getId();
+        Long b = d.getCreditor().getId();
+        return (a.equals(p1.getId()) && b.equals(p2.getId()))
+            || (a.equals(p2.getId()) && b.equals(p1.getId()));
+    }
+
+    private double round(double value) {
+        return Math.round(value * 100.0) / 100.0;
     }
 
     // Creates a standard PENDING debt and (optionally) fires the SMS notification.

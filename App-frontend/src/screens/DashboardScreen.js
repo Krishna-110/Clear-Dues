@@ -81,23 +81,18 @@ const DashboardScreen = ({ navigation }) => {
     ]);
   };
 
-  // Document-Aligned Calculations based on Current User
-  // Total active outstanding debts in the system (PENDING status)
-  const userTotalDebts = debts
-    .filter(d => 
-      (d.debtor?.phoneNumber === user?.phoneNumber || d.creditor?.phoneNumber === user?.phoneNumber) && 
-      d.status === 'PENDING'
-    )
-    .reduce((acc, d) => acc + d.amount, 0);
-    
-  // Optimized Pending Amount (The 'Real' money outstanding)
+  // All balances are based on the netted (pairwise) settlement figures so every number
+  // on screen agrees with what recording a repayment will actually settle.
   const totalOwe = settlements
     .filter(s => s.fromPhone === user?.phoneNumber)
     .reduce((acc, s) => acc + s.amount, 0);
-    
+
   const totalGet = settlements
     .filter(s => s.toPhone === user?.phoneNumber)
     .reduce((acc, s) => acc + s.amount, 0);
+
+  // Total outstanding the user is involved in (net), not a raw sum of stacked rows.
+  const userTotalDebts = totalOwe + totalGet;
 
   const pendingAmount = Math.abs(totalGet - totalOwe);
   const netBalance = totalGet - totalOwe;

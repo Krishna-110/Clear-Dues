@@ -2,103 +2,88 @@ package com.fairshare.debt_settlement.service;
 
 import com.fairshare.debt_settlement.dto.SettlementResponse;
 import com.fairshare.debt_settlement.model.Debt;
-import com.fairshare.debt_settlement.model.Person;
 import com.fairshare.debt_settlement.repository.DebtRepository;
-import com.fairshare.debt_settlement.repository.PersonRepository;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class SettlementService {
 
     private final DebtRepository debtRepository;
-    private final PersonRepository personRepository;
 
-    public SettlementService(DebtRepository debtRepository, PersonRepository personRepository) {
+    public SettlementService(DebtRepository debtRepository) {
         this.debtRepository = debtRepository;
-        this.personRepository = personRepository;
     }
 
+    /**
+     * Returns the outstanding balance between every pair of people, netted directly.
+     *
+     * This is intentionally PAIRWISE (no routing through third parties): the amount
+     * shown for "A should pay B" is exactly what A owes B once their mutual debts are
+     * combined. That way the number on screen always matches what recording a repayment
+     * will settle.
+     */
     public List<SettlementResponse> settleDebts() {
-        // 1. Fetch only PENDING debts and deduplicate by ID to prevent any JPA/Join doubling
-        java.util.Set<Long> processedIds = new java.util.HashSet<>();
-        List<Debt> allDebts = debtRepository.findAll().stream()
+        Set<Long> seen = new HashSet<>();
+        List<Debt> pending = debtRepository.findAll().stream()
                 .filter(d -> "PENDING".equals(d.getStatus()))
-                .filter(d -> {
-                    if (processedIds.contains(d.getId())) return false;
-                    processedIds.add(d.getId());
-                    return true;
-                })
-                .collect(java.util.stream.Collectors.toList());
+                .filter(d -> d.getDebtor() != null && d.getCreditor() != null)
+                .filter(d -> d.getDebtor().getPhoneNumber() != null && d.getCreditor().getPhoneNumber() != null)
+                .filter(d -> seen.add(d.getId())) // guard against any JPA join doubling
+                .collect(Collectors.toList());
 
-        Map<String, Double> balances = new HashMap<>();
+        // Net balance per unordered pair. Key = "loPhone|hiPhone";
+        // value = how much loPhone owes hiPhone (may be negative).
+        Map<String, Double> pairNet = new HashMap<>();
+        Map<String, String> nameByPhone = new HashMap<>();
 
-        // 2. Calculate net balances with phone number normalization (trimming)
-        for (Debt debt : allDebts) {
-            if (debt.getDebtor() == null || debt.getCreditor() == null) continue;
-            
-            String debtorPhone = debt.getDebtor().getPhoneNumber();
-            String creditorPhone = debt.getCreditor().getPhoneNumber();
-            
-            if (debtorPhone == null || creditorPhone == null) continue;
-            
-            // Trim to handle any hidden spaces that might cause doubling
-            debtorPhone = debtorPhone.trim();
-            creditorPhone = creditorPhone.trim();
+        for (Debt d : pending) {
+            String debtorPhone = d.getDebtor().getPhoneNumber().trim();
+            String creditorPhone = d.getCreditor().getPhoneNumber().trim();
+            if (debtorPhone.equals(creditorPhone)) continue; // ignore any self-debt
 
-            balances.put(debtorPhone, balances.getOrDefault(debtorPhone, 0.0) - debt.getAmount());
-            balances.put(creditorPhone, balances.getOrDefault(creditorPhone, 0.0) + debt.getAmount());
-        }
+            nameByPhone.put(debtorPhone, d.getDebtor().getName());
+            nameByPhone.put(creditorPhone, d.getCreditor().getName());
 
-        // 3. Separate into debtors and creditors (ignoring zero balances)
-        PriorityQueue<PersonBalance> debtors = new PriorityQueue<>(Comparator.comparingDouble(pb -> pb.balance));
-        PriorityQueue<PersonBalance> creditors = new PriorityQueue<>((pb1, pb2) -> Double.compare(pb2.balance, pb1.balance));
-
-        for (Map.Entry<String, Double> entry : balances.entrySet()) {
-            double balance = entry.getValue();
-            String phone = entry.getKey();
-            
-            if (Math.abs(balance) < 0.01) continue;
-
-            Person person = personRepository.findByPhoneNumber(phone).orElse(null);
-            if (person != null) {
-                if (balance < 0) {
-                    debtors.add(new PersonBalance(person.getId(), person.getName(), phone, balance));
-                } else {
-                    creditors.add(new PersonBalance(person.getId(), person.getName(), phone, balance));
-                }
+            // debtor owes creditor d.amount
+            if (debtorPhone.compareTo(creditorPhone) < 0) {
+                pairNet.merge(debtorPhone + "|" + creditorPhone, d.getAmount(), Double::sum);
+            } else {
+                pairNet.merge(creditorPhone + "|" + debtorPhone, -d.getAmount(), Double::sum);
             }
         }
 
-        // 4. Greedy algorithm to simplify debts
         List<SettlementResponse> results = new ArrayList<>();
-        while (!debtors.isEmpty() && !creditors.isEmpty()) {
-            PersonBalance debtor = debtors.poll();
-            PersonBalance creditor = creditors.poll();
+        for (Map.Entry<String, Double> entry : pairNet.entrySet()) {
+            double net = entry.getValue();
+            if (Math.abs(net) < 0.01) continue; // squared up
 
-            double amount = Math.min(-debtor.balance, creditor.balance);
-            results.add(new SettlementResponse(debtor.name, debtor.idOrPhone, creditor.name, creditor.idOrPhone, amount));
+            String[] pair = entry.getKey().split("\\|");
+            String lo = pair[0];
+            String hi = pair[1];
 
-            debtor.balance += amount;
-            creditor.balance -= amount;
+            String fromPhone;
+            String toPhone;
+            double amount;
+            if (net > 0) {
+                fromPhone = lo;  // lo owes hi
+                toPhone = hi;
+                amount = net;
+            } else {
+                fromPhone = hi;  // hi owes lo
+                toPhone = lo;
+                amount = -net;
+            }
 
-            if (debtor.balance < -0.01) debtors.add(debtor);
-            if (creditor.balance > 0.01) creditors.add(creditor);
+            results.add(new SettlementResponse(
+                    nameByPhone.get(fromPhone), fromPhone,
+                    nameByPhone.get(toPhone), toPhone,
+                    Math.round(amount * 100.0) / 100.0
+            ));
         }
 
         return results;
-    }
-
-    private static class PersonBalance {
-        String name;
-        String idOrPhone; // Now using phone number
-        Double balance;
-
-        PersonBalance(Long id, String name, String idOrPhone, Double balance) {
-            this.name = name;
-            this.idOrPhone = idOrPhone;
-            this.balance = balance;
-        }
     }
 }

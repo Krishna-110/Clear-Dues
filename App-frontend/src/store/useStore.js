@@ -117,11 +117,15 @@ export const useStore = create((set, get) => ({
   addDebt: async (debtData) => {
     try {
       const newDebt = await apiService.addDebt(debtData);
-      set((state) => ({ debts: [...state.debts, newDebt] }));
-      
-      // Update settlements immediately
-      const settlements = await apiService.getSettlements();
-      set({ settlements });
+
+      // Recording can settle/collapse existing rows on the server (netting a whole
+      // relationship), so re-sync debts and settlements from the source of truth
+      // rather than appending a single row locally.
+      const [debts, settlements] = await Promise.all([
+        apiService.getDebts(),
+        apiService.getSettlements(),
+      ]);
+      set({ debts, settlements });
       return newDebt;
     } catch (err) {
       const msg = err.response?.data?.message || 'Failed to record transaction';
