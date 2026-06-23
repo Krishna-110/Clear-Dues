@@ -134,6 +134,22 @@ export const useStore = create((set, get) => ({
     }
   },
 
+  acceptDebt: async (id) => {
+    try {
+      await apiService.acceptDebt(id);
+      // Accepting activates the debt and may simplify the ledger - re-sync from server.
+      const [debts, settlements] = await Promise.all([
+        apiService.getDebts(),
+        apiService.getSettlements(),
+      ]);
+      set({ debts, settlements });
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to accept debt';
+      set({ error: msg });
+      throw err;
+    }
+  },
+
   updateDebt: async (id, debtData) => {
     try {
       const updatedDebt = await apiService.updateDebt(id, debtData);

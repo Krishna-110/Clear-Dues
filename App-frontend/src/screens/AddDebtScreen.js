@@ -26,11 +26,18 @@ const AddDebtScreen = ({ navigation }) => {
         note: note
       });
       fetchData();
+      const isOwnDebt = debtor?.phoneNumber === user?.phoneNumber;
+      const debtorName = debtor?.name || 'them';
       setAmount('');
       setNote('');
       setDebtor(null);
       setCreditor(null);
-      Alert.alert('Success', 'Transaction recorded successfully!');
+      Alert.alert(
+        'Success',
+        isOwnDebt
+          ? 'Transaction recorded.'
+          : `Sent to ${debtorName} for confirmation. It becomes active once they accept.`
+      );
       navigation.navigate('Dashboard');
     } catch (error) {
       Alert.alert('Error', 'Failed to save transaction. Please try again.');

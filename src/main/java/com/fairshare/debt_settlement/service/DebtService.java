@@ -19,8 +19,14 @@ public class DebtService {
     private final DebtRepository debtRepository;
     private final SmsService smsService;
 
+    /**
+     * Records a debt. A debt you record against SOMEONE ELSE starts UNCONFIRMED and must be
+     * accepted by the debtor before it counts (so nobody can inject a fake debt into the
+     * balances). A debt where YOU are the debtor - you're admitting your own debt - is
+     * auto-confirmed (PENDING) and the ledger is simplified right away.
+     */
     @org.springframework.transaction.annotation.Transactional
-    public Debt createDebt(CreateDebtRequest request) {
+    public Debt createDebt(CreateDebtRequest request, String currentUserEmail) {
         String debtorPhone = normalizePhone(request.getDebtorPhone());
         String creditorPhone = normalizePhone(request.getCreditorPhone());
 
@@ -29,21 +35,58 @@ public class DebtService {
         Person creditor = personRepository.findByPhoneNumber(creditorPhone)
                 .orElseThrow(() -> new RuntimeException("Creditor not found with phone: " + request.getCreditorPhone()));
 
-        // Record the raw debt first.
-        Debt result = saveNewPendingDebt(debtor, creditor, request.getAmount(), request.getNote());
+        Debt debt = new Debt();
+        debt.setDebtor(debtor);
+        debt.setCreditor(creditor);
+        debt.setAmount(request.getAmount());
+        debt.setNote(request.getNote());
 
-        // Then simplify: collapse chains, net pairs and clear cycles. If this debt got folded
-        // into a simplified balance it will be marked SETTLED here (so we don't SMS for it).
-        Set<Long> settledIds = simplifyConnectedComponents();
+        boolean recordedByDebtor = currentUserEmail != null
+                && debtor.getEmail() != null
+                && debtor.getEmail().equalsIgnoreCase(currentUserEmail);
 
-        if (result.getId() == null || !settledIds.contains(result.getId())) {
-            // Still a standalone new obligation -> tell the debtor they owe money.
-            notifyDebtor(result);
-        } else {
-            result.setStatus("SETTLED"); // keep the returned object consistent
+        if (recordedByDebtor) {
+            // You're recording your own debt -> no confirmation needed.
+            debt.setStatus("PENDING");
+            Debt saved = debtRepository.save(debt);
+            simplifyConnectedComponents();
+            return saved;
         }
 
-        return result;
+        // Proposed against someone else -> wait for them to accept; notify them.
+        debt.setStatus("UNCONFIRMED");
+        Debt saved = debtRepository.save(debt);
+        notifyDebtor(saved);
+        return saved;
+    }
+
+    // Backwards-compatible overload (treats it as recorded by neither party).
+    @org.springframework.transaction.annotation.Transactional
+    public Debt createDebt(CreateDebtRequest request) {
+        return createDebt(request, null);
+    }
+
+    /**
+     * The debtor accepts a proposed (UNCONFIRMED) debt, turning it into an active PENDING debt.
+     * Only the debtor may accept. Once active, the ledger is simplified.
+     */
+    @org.springframework.transaction.annotation.Transactional
+    public Debt acceptDebt(Long debtId, String userEmail) {
+        Debt debt = debtRepository.findById(debtId)
+                .orElseThrow(() -> new RuntimeException("Debt not found"));
+
+        if (debt.getDebtor() == null || debt.getDebtor().getEmail() == null
+                || !debt.getDebtor().getEmail().equalsIgnoreCase(userEmail)) {
+            throw new RuntimeException("Unauthorized: You are not the debtor.");
+        }
+        if (!"UNCONFIRMED".equals(debt.getStatus())) {
+            return debt; // already accepted/settled - nothing to do
+        }
+
+        debt.setStatus("PENDING");
+        debtRepository.save(debt);
+        simplifyConnectedComponents();
+        return debt;
     }
 
     /**
@@ -213,16 +256,6 @@ public class DebtService {
             this.id = id;
             this.amount = amount;
         }
-    }
-
-    // Creates a standard PENDING debt (no notification - the caller decides).
-    private Debt saveNewPendingDebt(Person debtor, Person creditor, Double amount, String note) {
-        Debt debt = new Debt();
-        debt.setDebtor(debtor);
-        debt.setCreditor(creditor);
-        debt.setAmount(amount);
-        debt.setNote(note);
-        return debtRepository.save(debt);
     }
 
     // Sends the "you owe X" SMS to the debtor of a newly created, still-outstanding debt.

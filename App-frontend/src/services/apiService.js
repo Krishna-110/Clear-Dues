@@ -71,6 +71,10 @@ export const apiService = {
     const response = await api.post('/debts', debtData);
     return response.data;
   },
+  acceptDebt: async (id) => {
+    const response = await api.post(`/debts/${id}/accept`);
+    return response.data;
+  },
   updateDebt: async (id, debtData) => {
     const response = await api.put(`/debts/${id}`, debtData);
     return response.data;

@@ -11,13 +11,43 @@ import PhoneOnboardingModal from '../components/PhoneOnboardingModal';
 import { requestContactPermission } from '../services/ContactService';
 
 const DashboardScreen = ({ navigation }) => {
-  const { debts, fetchData, logout, isLoading, user, updateDebt, deleteDebt } = useStore();
-  
+  const { debts, fetchData, logout, isLoading, user, updateDebt, deleteDebt, acceptDebt } = useStore();
+
   const [selectedDebt, setSelectedDebt] = useState(null);
   const [editAmount, setEditAmount] = useState('');
   const [editNote, setEditNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPhoneModal, setShowPhoneModal] = useState(false);
+  const [actingOnId, setActingOnId] = useState(null);
+
+  const handleAccept = async (debt) => {
+    setActingOnId(debt.id);
+    try {
+      await acceptDebt(debt.id);
+    } catch (e) {
+      Alert.alert('Error', 'Could not accept this debt. Please try again.');
+    } finally {
+      setActingOnId(null);
+    }
+  };
+
+  const handleDecline = (debt) => {
+    Alert.alert(
+      'Decline this debt?',
+      `${debt.creditor?.name} says you owe ₹${debt.amount}. Declining removes it.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Decline',
+          style: 'destructive',
+          onPress: async () => {
+            setActingOnId(debt.id);
+            try { await deleteDebt(debt.id); } catch (e) {} finally { setActingOnId(null); }
+          },
+        },
+      ]
+    );
+  };
 
   useEffect(() => {
     fetchData();
@@ -118,6 +148,11 @@ const DashboardScreen = ({ navigation }) => {
     )
     .reduce((acc, d) => acc + d.amount, 0);
 
+  // Debts the user must confirm (someone says you owe them), and ones they proposed
+  // and are waiting on (you say someone owes you).
+  const toConfirm = debts.filter(d => d.status === 'UNCONFIRMED' && d.debtor?.phoneNumber === myPhone);
+  const waitingOnOthers = debts.filter(d => d.status === 'UNCONFIRMED' && d.creditor?.phoneNumber === myPhone);
+
   return (
     <SafeAreaView style={styles.container}>
       {/* AppBar: Title "Debt Settlement" per document */}
@@ -169,6 +204,70 @@ const DashboardScreen = ({ navigation }) => {
             <SummaryCard title="Total Settled" amount={totalSettled} type="neutral" />
           </View>
         </View>
+
+        {/* Needs Your Confirmation - debts others recorded against you */}
+        {toConfirm.length > 0 && (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Needs Your Confirmation</Text>
+            </View>
+            <View style={styles.settlementList}>
+              {toConfirm.map((d, index) => (
+                <View key={index} style={styles.confirmItem}>
+                  <TransactionCard
+                    debtor={d.debtor?.name}
+                    creditor={d.creditor?.name}
+                    amount={d.amount}
+                    status="UNCONFIRMED"
+                    note={d.note}
+                  />
+                  <View style={styles.confirmActions}>
+                    <TouchableOpacity
+                      style={[styles.confirmBtn, styles.declineBtn]}
+                      disabled={actingOnId === d.id}
+                      onPress={() => handleDecline(d)}
+                    >
+                      <Text style={styles.declineText}>Decline</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.confirmBtn, styles.acceptBtn]}
+                      disabled={actingOnId === d.id}
+                      onPress={() => handleAccept(d)}
+                    >
+                      {actingOnId === d.id ? (
+                        <ActivityIndicator color={Theme.colors.white} size="small" />
+                      ) : (
+                        <Text style={styles.acceptText}>Accept</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+
+        {/* Waiting on others to confirm debts you recorded */}
+        {waitingOnOthers.length > 0 && (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Waiting for Confirmation</Text>
+            </View>
+            <View style={styles.settlementList}>
+              {waitingOnOthers.map((d, index) => (
+                <View key={index} style={{ opacity: 0.7 }}>
+                  <TransactionCard
+                    debtor={d.debtor?.name}
+                    creditor={d.creditor?.name}
+                    amount={d.amount}
+                    status="UNCONFIRMED"
+                    note={`Waiting for ${d.debtor?.name} to accept`}
+                  />
+                </View>
+              ))}
+            </View>
+          </>
+        )}
 
         {/* Your Balances Section - who you owe and who owes you (netted per person) */}
         <View style={styles.sectionHeader}>
@@ -406,6 +505,43 @@ const styles = StyleSheet.create({
   },
   settlementList: {
     paddingHorizontal: Theme.spacing.xs,
+  },
+  confirmItem: {
+    marginBottom: Theme.spacing.sm,
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingHorizontal: Theme.spacing.md,
+    marginTop: -Theme.spacing.xs,
+    marginBottom: Theme.spacing.sm,
+  },
+  confirmBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 18,
+    borderRadius: Theme.borderRadius.full || 20,
+    marginLeft: Theme.spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 90,
+  },
+  acceptBtn: {
+    backgroundColor: Theme.colors.secondary || Theme.colors.primary,
+  },
+  declineBtn: {
+    backgroundColor: Theme.colors.surface,
+    borderWidth: 1,
+    borderColor: Theme.colors.danger,
+  },
+  acceptText: {
+    color: Theme.colors.white,
+    fontWeight: '800',
+    fontSize: 14,
+  },
+  declineText: {
+    color: Theme.colors.danger,
+    fontWeight: '800',
+    fontSize: 14,
   },
   emptyContainer: {
     padding: Theme.spacing.xl,

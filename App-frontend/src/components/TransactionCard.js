@@ -8,6 +8,7 @@ const TransactionCard = ({ debtor, creditor, amount, status, note }) => {
   const creditorName = creditor || 'Unknown';
   const amountValue = amount || 0;
   const isSettled = status === 'SETTLED';
+  const isUnconfirmed = status === 'UNCONFIRMED';
 
   return (
     <View style={[styles.card, Theme.shadow.light, isSettled && styles.settledCard]}>
@@ -26,6 +27,10 @@ const TransactionCard = ({ debtor, creditor, amount, status, note }) => {
         {isSettled ? (
           <View style={styles.settledBadge}>
             <Text style={styles.settledBadgeText}>SETTLED</Text>
+          </View>
+        ) : isUnconfirmed ? (
+          <View style={styles.awaitingBadge}>
+            <Text style={styles.awaitingBadgeText}>AWAITING</Text>
           </View>
         ) : (
           <View style={styles.pendingBadge}>
@@ -147,6 +152,20 @@ const styles = StyleSheet.create({
     fontSize: 8,
     fontWeight: '900',
     color: Theme.colors.primary,
+  },
+  awaitingBadge: {
+    backgroundColor: Theme.colors.warning ? Theme.colors.warning + '20' : '#F59E0B20',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginTop: 2,
+    borderWidth: 0.5,
+    borderColor: (Theme.colors.warning || '#F59E0B') + '60',
+  },
+  awaitingBadgeText: {
+    fontSize: 8,
+    fontWeight: '900',
+    color: Theme.colors.warning || '#D97706',
   },
   noteOverlay: {
     position: 'absolute',

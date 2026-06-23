@@ -5,6 +5,8 @@ import com.fairshare.debt_settlement.model.Debt;
 import com.fairshare.debt_settlement.service.DebtService;
 import lombok.AllArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -18,7 +20,20 @@ public class DebtController {
 
     @PostMapping
     public ResponseEntity<Debt> createDebt(@RequestBody CreateDebtRequest request) {
-        return ResponseEntity.ok(debtService.createDebt(request));
+        return ResponseEntity.ok(debtService.createDebt(request, currentUserEmail()));
+    }
+
+    @PostMapping("/{id}/accept")
+    public ResponseEntity<Debt> acceptDebt(@PathVariable Long id) {
+        return ResponseEntity.ok(debtService.acceptDebt(id, currentUserEmail()));
+    }
+
+    private String currentUserEmail() {
+        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        if (principal instanceof UserDetails) {
+            return ((UserDetails) principal).getUsername();
+        }
+        return principal.toString();
     }
 
     @GetMapping
