@@ -1,6 +1,7 @@
 import React, { useEffect, useCallback, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Modal, TextInput, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { useStore } from '../store/useStore';
 import { Theme } from '../theme/Theme';
 import SummaryCard from '../components/SummaryCard';
@@ -49,9 +50,13 @@ const DashboardScreen = ({ navigation }) => {
     );
   };
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  // Refetch whenever the tab regains focus so new proposals / acceptances show up
+  // without needing a manual pull-to-refresh.
+  useFocusEffect(
+    useCallback(() => {
+      fetchData();
+    }, [fetchData])
+  );
 
   useEffect(() => {
     // Show phone onboarding if user is logged in but has no phone number
@@ -173,7 +178,7 @@ const DashboardScreen = ({ navigation }) => {
             </TouchableOpacity>
             <View style={styles.iconButton}>
               <Bell size={20} color={Theme.colors.text} />
-              <View style={styles.notificationBadge} />
+              {toConfirm.length > 0 && <View style={styles.notificationBadge} />}
             </View>
           </View>
         </View>
@@ -308,7 +313,8 @@ const DashboardScreen = ({ navigation }) => {
         
         <View style={styles.settlementList}>
           {debts
-            .filter(d => d.debtor?.phoneNumber === user?.phoneNumber || d.creditor?.phoneNumber === user?.phoneNumber)
+            .filter(d => (d.debtor?.phoneNumber === user?.phoneNumber || d.creditor?.phoneNumber === user?.phoneNumber)
+              && d.status !== 'UNCONFIRMED') // unconfirmed shows in the confirmation sections, not the log
             .sort((a, b) => b.id - a.id) // Show newest first
             .slice(0, 5)
             .map((d, index) => (

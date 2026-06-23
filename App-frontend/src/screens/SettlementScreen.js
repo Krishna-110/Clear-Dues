@@ -1,6 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { useStore } from '../store/useStore';
 import { Theme } from '../theme/Theme';
 import { HandCoins, Sparkles, CheckCircle2 } from 'lucide-react-native';
@@ -9,9 +10,11 @@ import TransactionCard from '../components/TransactionCard';
 const SettlementScreen = () => {
   const { settlements, debts, fetchData, isLoading, user } = useStore();
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  useFocusEffect(
+    useCallback(() => {
+      fetchData();
+    }, [fetchData])
+  );
 
   const displayedSettlements = settlements.filter(
     s => s.fromPhone === user?.phoneNumber || s.toPhone === user?.phoneNumber

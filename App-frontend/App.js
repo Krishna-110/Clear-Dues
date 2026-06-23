@@ -22,7 +22,14 @@ const Stack = createStackNavigator();
 
 function MainTabs() {
   const insets = useSafeAreaInsets();
-  
+  const debts = useStore((s) => s.debts);
+  const user = useStore((s) => s.user);
+
+  // How many debts are waiting for THIS user to confirm.
+  const pendingConfirmations = debts.filter(
+    (d) => d.status === 'UNCONFIRMED' && d.debtor?.phoneNumber === user?.phoneNumber
+  ).length;
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -46,7 +53,11 @@ function MainTabs() {
         headerShown: false,
       })}
     >
-      <Tab.Screen name="Dashboard" component={DashboardScreen} />
+      <Tab.Screen
+        name="Dashboard"
+        component={DashboardScreen}
+        options={{ tabBarBadge: pendingConfirmations > 0 ? pendingConfirmations : undefined }}
+      />
       <Tab.Screen name="Record" component={AddDebtScreen} />
       <Tab.Screen name="Settlements" component={SettlementScreen} />
       <Tab.Screen name="Persons" component={ManagePersonsScreen} />

@@ -10,7 +10,8 @@ const HistoryScreen = ({ navigation }) => {
   const { debts, user } = useStore();
 
   const userDebts = debts
-    .filter(d => d.debtor?.phoneNumber === user?.phoneNumber || d.creditor?.phoneNumber === user?.phoneNumber)
+    .filter(d => (d.debtor?.phoneNumber === user?.phoneNumber || d.creditor?.phoneNumber === user?.phoneNumber)
+      && d.status !== 'UNCONFIRMED') // unconfirmed proposals aren't real transactions yet
     .sort((a, b) => b.id - a.id);
 
   return (

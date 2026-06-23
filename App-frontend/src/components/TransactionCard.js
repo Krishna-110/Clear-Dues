@@ -154,18 +154,18 @@ const styles = StyleSheet.create({
     color: Theme.colors.primary,
   },
   awaitingBadge: {
-    backgroundColor: Theme.colors.warning ? Theme.colors.warning + '20' : '#F59E0B20',
+    backgroundColor: Theme.colors.accent + '20',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
     marginTop: 2,
     borderWidth: 0.5,
-    borderColor: (Theme.colors.warning || '#F59E0B') + '60',
+    borderColor: Theme.colors.accent + '60',
   },
   awaitingBadgeText: {
     fontSize: 8,
     fontWeight: '900',
-    color: Theme.colors.warning || '#D97706',
+    color: Theme.colors.accent,
   },
   noteOverlay: {
     position: 'absolute',
