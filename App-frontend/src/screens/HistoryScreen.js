@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStore } from '../store/useStore';
 import { Theme } from '../theme/Theme';
@@ -7,12 +7,23 @@ import { ChevronLeft, ListFilter } from 'lucide-react-native';
 import TransactionCard from '../components/TransactionCard';
 
 const HistoryScreen = ({ navigation }) => {
-  const { debts, user } = useStore();
+  const { debts, user, restoreDebt } = useStore();
 
   const userDebts = debts
     .filter(d => (d.debtor?.phoneNumber === user?.phoneNumber || d.creditor?.phoneNumber === user?.phoneNumber)
       && d.status !== 'UNCONFIRMED') // unconfirmed proposals aren't real transactions yet
     .sort((a, b) => b.id - a.id);
+
+  const confirmRestore = (debt) => {
+    Alert.alert(
+      'Restore this transaction?',
+      `This will bring back "${debt.debtor?.name} owes ${debt.creditor?.name} ₹${debt.amount}" and re-balance.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Restore', onPress: () => { restoreDebt(debt.id).catch(() => {}); } },
+      ]
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -33,12 +44,24 @@ const HistoryScreen = ({ navigation }) => {
         data={userDebts}
         keyExtractor={(item) => item.id.toString()}
         renderItem={({ item }) => (
-          <TransactionCard 
-            debtor={item.debtor?.name}
-            creditor={item.creditor?.name}
-            amount={item.amount}
-            status={item.status}
-          />
+          item.status === 'DELETED' ? (
+            <TouchableOpacity onPress={() => confirmRestore(item)} activeOpacity={0.7}>
+              <TransactionCard
+                debtor={item.debtor?.name}
+                creditor={item.creditor?.name}
+                amount={item.amount}
+                status={item.status}
+                note={item.deletedBy ? `Deleted · tap to restore` : 'Tap to restore'}
+              />
+            </TouchableOpacity>
+          ) : (
+            <TransactionCard
+              debtor={item.debtor?.name}
+              creditor={item.creditor?.name}
+              amount={item.amount}
+              status={item.status}
+            />
+          )
         )}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
