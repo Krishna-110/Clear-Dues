@@ -12,7 +12,7 @@ import PhoneOnboardingModal from '../components/PhoneOnboardingModal';
 import { requestContactPermission } from '../services/ContactService';
 
 const DashboardScreen = ({ navigation }) => {
-  const { debts, fetchData, logout, isLoading, user, updateDebt, deleteDebt, acceptDebt } = useStore();
+  const { debts, notifications, fetchData, logout, isLoading, user, updateDebt, deleteDebt, acceptDebt, declineDebt, restoreDebt, markNotificationsRead } = useStore();
 
   const [selectedDebt, setSelectedDebt] = useState(null);
   const [editAmount, setEditAmount] = useState('');
@@ -20,6 +20,14 @@ const DashboardScreen = ({ navigation }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPhoneModal, setShowPhoneModal] = useState(false);
   const [actingOnId, setActingOnId] = useState(null);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  const unreadCount = (notifications || []).filter(n => !n.read).length;
+
+  const openNotifications = () => {
+    setShowNotifications(true);
+    if (unreadCount > 0) markNotificationsRead();
+  };
 
   const handleAccept = async (debt) => {
     setActingOnId(debt.id);
@@ -35,7 +43,7 @@ const DashboardScreen = ({ navigation }) => {
   const handleDecline = (debt) => {
     Alert.alert(
       'Decline this debt?',
-      `${debt.creditor?.name} says you owe ₹${debt.amount}. Declining removes it.`,
+      `${debt.creditor?.name} says you owe ₹${debt.amount}. It will be marked Declined and kept in history; ${debt.creditor?.name} will be notified.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -43,11 +51,24 @@ const DashboardScreen = ({ navigation }) => {
           style: 'destructive',
           onPress: async () => {
             setActingOnId(debt.id);
-            try { await deleteDebt(debt.id); } catch (e) {} finally { setActingOnId(null); }
+            try { await declineDebt(debt.id); } catch (e) {} finally { setActingOnId(null); }
           },
         },
       ]
     );
+  };
+
+  const handleRestore = async () => {
+    if (!selectedDebt) return;
+    setIsSubmitting(true);
+    try {
+      await restoreDebt(selectedDebt.id);
+      setSelectedDebt(null);
+    } catch (e) {
+      Alert.alert('Error', 'Failed to restore transaction.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Refetch whenever the tab regains focus so new proposals / acceptances show up
@@ -176,10 +197,14 @@ const DashboardScreen = ({ navigation }) => {
             >
               <LogOut size={20} color={Theme.colors.danger} />
             </TouchableOpacity>
-            <View style={styles.iconButton}>
+            <TouchableOpacity style={styles.iconButton} onPress={openNotifications}>
               <Bell size={20} color={Theme.colors.text} />
-              {toConfirm.length > 0 && <View style={styles.notificationBadge} />}
-            </View>
+              {unreadCount > 0 && (
+                <View style={styles.notificationCountBadge}>
+                  <Text style={styles.notificationCountText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -348,53 +373,97 @@ const DashboardScreen = ({ navigation }) => {
         >
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Edit Transaction</Text>
-              
-              {selectedDebt && (
-                <Text style={styles.modalSubtitle}>
-                  {selectedDebt.creditor?.name} paid for {selectedDebt.debtor?.name}
-                </Text>
+              {selectedDebt?.status === 'DELETED' ? (
+                <>
+                  <Text style={styles.modalTitle}>Restore Transaction</Text>
+                  <Text style={styles.modalSubtitle}>
+                    This entry was deleted{selectedDebt?.deletedBy ? ` by ${selectedDebt.deletedBy}` : ''}. Restore it to bring the debt back and re-balance.
+                  </Text>
+                  <View style={styles.modalActions}>
+                    <TouchableOpacity style={[styles.actionBtn, styles.deleteBtn]} onPress={() => setSelectedDebt(null)} disabled={isSubmitting}>
+                      <Text style={styles.deleteBtnText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.actionBtn, styles.saveBtn]} onPress={handleRestore} disabled={isSubmitting}>
+                      {isSubmitting ? <ActivityIndicator color={Theme.colors.white} /> : <Text style={styles.saveBtnText}>Restore</Text>}
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.modalTitle}>Edit Transaction</Text>
+
+                  {selectedDebt && (
+                    <Text style={styles.modalSubtitle}>
+                      {selectedDebt.creditor?.name} paid for {selectedDebt.debtor?.name}
+                    </Text>
+                  )}
+
+                  <Text style={styles.label}>Amount</Text>
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.currencyPrefix}>₹</Text>
+                    <TextInput
+                      style={styles.input}
+                      keyboardType="numeric"
+                      value={editAmount}
+                      onChangeText={setEditAmount}
+                      editable={!isSubmitting}
+                    />
+                  </View>
+
+                  <Text style={styles.label}>Note</Text>
+                  <View style={styles.inputContainer}>
+                    <TextInput
+                      style={styles.input}
+                      value={editNote}
+                      onChangeText={setEditNote}
+                      editable={!isSubmitting}
+                      placeholder="Optional Note"
+                    />
+                  </View>
+
+                  <View style={styles.modalActions}>
+                    <TouchableOpacity style={[styles.actionBtn, styles.deleteBtn]} onPress={handleDelete} disabled={isSubmitting}>
+                      <Text style={styles.deleteBtnText}>Delete</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={[styles.actionBtn, styles.saveBtn]} onPress={handleUpdate} disabled={isSubmitting}>
+                      {isSubmitting ? <ActivityIndicator color={Theme.colors.white} /> : <Text style={styles.saveBtnText}>Save</Text>}
+                    </TouchableOpacity>
+                  </View>
+
+                  <TouchableOpacity style={styles.closeModalBtn} onPress={() => setSelectedDebt(null)}>
+                    <Text style={styles.closeModalText}>Cancel</Text>
+                  </TouchableOpacity>
+                </>
               )}
-
-              <Text style={styles.label}>Amount</Text>
-              <View style={styles.inputContainer}>
-                <Text style={styles.currencyPrefix}>₹</Text>
-                <TextInput
-                  style={styles.input}
-                  keyboardType="numeric"
-                  value={editAmount}
-                  onChangeText={setEditAmount}
-                  editable={!isSubmitting}
-                />
-              </View>
-
-              <Text style={styles.label}>Note</Text>
-              <View style={styles.inputContainer}>
-                <TextInput
-                  style={styles.input}
-                  value={editNote}
-                  onChangeText={setEditNote}
-                  editable={!isSubmitting}
-                  placeholder="Optional Note"
-                />
-              </View>
-
-              <View style={styles.modalActions}>
-                <TouchableOpacity style={[styles.actionBtn, styles.deleteBtn]} onPress={handleDelete} disabled={isSubmitting}>
-                  <Text style={styles.deleteBtnText}>Delete</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity style={[styles.actionBtn, styles.saveBtn]} onPress={handleUpdate} disabled={isSubmitting}>
-                  {isSubmitting ? <ActivityIndicator color={Theme.colors.white} /> : <Text style={styles.saveBtnText}>Save</Text>}
-                </TouchableOpacity>
-              </View>
-              
-              <TouchableOpacity style={styles.closeModalBtn} onPress={() => setSelectedDebt(null)}>
-                <Text style={styles.closeModalText}>Cancel</Text>
-              </TouchableOpacity>
             </View>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Notifications Modal */}
+      <Modal visible={showNotifications} animationType="slide" transparent={true} onRequestClose={() => setShowNotifications(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Notifications</Text>
+            <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
+              {(notifications || []).length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyText}>No notifications yet.</Text>
+                </View>
+              ) : (
+                notifications.map((n, index) => (
+                  <View key={n.id || index} style={styles.notifItem}>
+                    <Text style={styles.notifMessage}>{n.message}</Text>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+            <TouchableOpacity style={styles.closeModalBtn} onPress={() => setShowNotifications(false)}>
+              <Text style={styles.closeModalText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
       <PhoneOnboardingModal 
         visible={showPhoneModal} 
@@ -459,6 +528,35 @@ const styles = StyleSheet.create({
     backgroundColor: Theme.colors.danger,
     borderWidth: 2,
     borderColor: Theme.colors.white,
+  },
+  notificationCountBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    backgroundColor: Theme.colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: Theme.colors.white,
+  },
+  notificationCountText: {
+    color: Theme.colors.white,
+    fontSize: 9,
+    fontWeight: '900',
+  },
+  notifItem: {
+    paddingVertical: Theme.spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Theme.colors.border + '60',
+  },
+  notifMessage: {
+    fontSize: 14,
+    color: Theme.colors.text,
+    lineHeight: 20,
   },
   content: {
     paddingTop: Theme.spacing.lg,

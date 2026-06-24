@@ -75,6 +75,14 @@ export const apiService = {
     const response = await api.post(`/debts/${id}/accept`);
     return response.data;
   },
+  declineDebt: async (id) => {
+    const response = await api.post(`/debts/${id}/decline`);
+    return response.data;
+  },
+  restoreDebt: async (id) => {
+    const response = await api.post(`/debts/${id}/restore`);
+    return response.data;
+  },
   updateDebt: async (id, debtData) => {
     const response = await api.put(`/debts/${id}`, debtData);
     return response.data;
@@ -87,6 +95,15 @@ export const apiService = {
   getSettlements: async () => {
     const response = await api.get('/settle');
     return response.data;
+  },
+
+  // Notifications
+  getNotifications: async () => {
+    const response = await api.get('/notifications');
+    return response.data;
+  },
+  markNotificationsRead: async () => {
+    await api.post('/notifications/read');
   },
 
   // Phone Support

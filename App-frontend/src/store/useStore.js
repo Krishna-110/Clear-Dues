@@ -7,6 +7,7 @@ export const useStore = create((set, get) => ({
   persons: [],
   debts: [],
   settlements: [],
+  notifications: [],
   user: null,
   isAuthenticated: false,
   isLoading: false,
@@ -32,13 +33,14 @@ export const useStore = create((set, get) => ({
 
   logout: async () => {
     await authStorage.removeToken();
-    set({ 
-      isAuthenticated: false, 
-      user: null, 
-      persons: [], 
-      debts: [], 
+    set({
+      isAuthenticated: false,
+      user: null,
+      persons: [],
+      debts: [],
       settlements: [],
-      error: null 
+      notifications: [],
+      error: null
     });
   },
 
@@ -51,13 +53,14 @@ export const useStore = create((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      const [persons, debts, settlements, user] = await Promise.all([
+      const [persons, debts, settlements, user, notifications] = await Promise.all([
         apiService.getPersons(),
         apiService.getDebts(),
         apiService.getSettlements(),
         apiService.getProfile(),
+        apiService.getNotifications().catch(() => []),
       ]);
-      set({ persons, debts, settlements, user, isLoading: false });
+      set({ persons, debts, settlements, user, notifications, isLoading: false });
     } catch (err) {
       const errorMessage = err.response?.data?.message || err.message || 'Network error';
       set({ error: errorMessage, isLoading: false });
@@ -137,17 +140,54 @@ export const useStore = create((set, get) => ({
   acceptDebt: async (id) => {
     try {
       await apiService.acceptDebt(id);
-      // Accepting activates the debt and may simplify the ledger - re-sync from server.
-      const [debts, settlements] = await Promise.all([
-        apiService.getDebts(),
-        apiService.getSettlements(),
-      ]);
-      set({ debts, settlements });
+      await get().resyncDebts();
     } catch (err) {
       const msg = err.response?.data?.message || 'Failed to accept debt';
       set({ error: msg });
       throw err;
     }
+  },
+
+  declineDebt: async (id) => {
+    try {
+      await apiService.declineDebt(id);
+      await get().resyncDebts();
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to decline debt';
+      set({ error: msg });
+      throw err;
+    }
+  },
+
+  restoreDebt: async (id) => {
+    try {
+      await apiService.restoreDebt(id);
+      await get().resyncDebts();
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to restore debt';
+      set({ error: msg });
+      throw err;
+    }
+  },
+
+  markNotificationsRead: async () => {
+    // Optimistically mark read locally, then tell the server.
+    set((state) => ({ notifications: state.notifications.map(n => ({ ...n, read: true })) }));
+    try {
+      await apiService.markNotificationsRead();
+    } catch (err) {
+      // non-fatal
+    }
+  },
+
+  // Re-sync the bits that change when a debt is accepted/declined/restored/simplified.
+  resyncDebts: async () => {
+    const [debts, settlements, notifications] = await Promise.all([
+      apiService.getDebts(),
+      apiService.getSettlements(),
+      apiService.getNotifications().catch(() => get().notifications),
+    ]);
+    set({ debts, settlements, notifications });
   },
 
   updateDebt: async (id, debtData) => {
@@ -170,12 +210,9 @@ export const useStore = create((set, get) => ({
   deleteDebt: async (id) => {
     try {
       await apiService.deleteDebt(id);
-      set((state) => ({ 
-        debts: state.debts.filter(d => d.id !== id) 
-      }));
-      // Update settlements immediately
-      const settlements = await apiService.getSettlements();
-      set({ settlements });
+      // Soft-delete keeps the row (status DELETED) so it stays visible in history -
+      // re-sync from the server rather than dropping it locally.
+      await get().resyncDebts();
     } catch (err) {
       const msg = err.response?.data?.message || 'Failed to delete transaction';
       set({ error: msg });

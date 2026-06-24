@@ -6,6 +6,7 @@ import com.fairshare.debt_settlement.model.Person;
 import com.fairshare.debt_settlement.repository.DebtRepository;
 import com.fairshare.debt_settlement.repository.PersonRepository;
 import com.fairshare.debt_settlement.service.DebtService;
+import com.fairshare.debt_settlement.service.NotificationService;
 import com.fairshare.debt_settlement.service.SmsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,6 +33,7 @@ class DebtServiceSettlementTest {
     private PersonRepository personRepository;
     private DebtRepository debtRepository;
     private SmsService smsService;
+    private NotificationService notificationService;
     private DebtService debtService;
 
     private List<Debt> db;
@@ -46,7 +48,8 @@ class DebtServiceSettlementTest {
         personRepository = mock(PersonRepository.class);
         debtRepository = mock(DebtRepository.class);
         smsService = mock(SmsService.class);
-        debtService = new DebtService(personRepository, debtRepository, smsService);
+        notificationService = mock(NotificationService.class);
+        debtService = new DebtService(personRepository, debtRepository, smsService, notificationService);
 
         a = person(1L, "A", "1111111111");
         b = person(2L, "B", "2222222222");
@@ -202,5 +205,85 @@ class DebtServiceSettlementTest {
 
         assertThat(pending()).isEmpty();
         assertThat(db).allMatch(d -> "SETTLED".equals(d.getStatus()));
+    }
+
+    // ---- decline ----
+
+    @Test
+    void decliningKeepsADeclinedRecordAndNotifiesCreditor() {
+        Debt proposed = debtService.createDebt(req("2222222222", "1111111111", 500.0), "a@example.com");
+
+        debtService.declineDebt(proposed.getId(), "b@example.com");
+
+        assertThat(proposed.getStatus()).isEqualTo("DECLINED");
+        assertThat(db).contains(proposed);   // row kept for history
+        assertThat(pending()).isEmpty();      // never counts toward balances
+        verify(notificationService).notify(eq("a@example.com"), eq("DECLINED"), anyString(), any());
+    }
+
+    @Test
+    void decliningByNonDebtor_isRejected() {
+        Debt proposed = debtService.createDebt(req("2222222222", "1111111111", 500.0), "a@example.com");
+
+        assertThatThrownBy(() -> debtService.declineDebt(proposed.getId(), "a@example.com"))
+                .isInstanceOf(RuntimeException.class);
+        assertThat(proposed.getStatus()).isEqualTo("UNCONFIRMED");
+    }
+
+    // ---- soft delete / restore ----
+
+    @Test
+    void deletingIsSoftAndKeepsTheRowOutOfBalances() {
+        Debt d = seedPending(100L, a, b, 500.0); // A owes B 500
+
+        debtService.deleteDebt(100L, "a@example.com");
+
+        assertThat(d.getStatus()).isEqualTo("DELETED");
+        assertThat(d.getDeletedBy()).isEqualTo("a@example.com");
+        assertThat(d.getDeletedAt()).isNotNull();
+        assertThat(db).contains(d);       // row kept, recoverable
+        assertThat(pending()).isEmpty();  // ignored by balances
+    }
+
+    @Test
+    void deletingByNonParty_isRejected() {
+        seedPending(100L, a, b, 500.0);
+
+        assertThatThrownBy(() -> debtService.deleteDebt(100L, "c@example.com"))
+                .isInstanceOf(RuntimeException.class);
+        assertThat(pending()).hasSize(1);
+    }
+
+    @Test
+    void restoringADeletedDebt_makesItActiveAgain() {
+        Debt d = seedPending(100L, a, b, 500.0);
+        debtService.deleteDebt(100L, "a@example.com");
+
+        debtService.restoreDebt(100L, "a@example.com");
+
+        assertThat(d.getStatus()).isEqualTo("PENDING");
+        assertThat(d.getDeletedAt()).isNull();
+        assertThat(pending()).hasSize(1);
+    }
+
+    // ---- notifications ----
+
+    @Test
+    void accepting_notifiesTheCreditor() {
+        Debt proposed = debtService.createDebt(req("2222222222", "1111111111", 500.0), "a@example.com");
+
+        debtService.acceptDebt(proposed.getId(), "b@example.com");
+
+        verify(notificationService).notify(eq("a@example.com"), eq("ACCEPTED"), anyString(), any());
+    }
+
+    @Test
+    void chainReroute_notifiesAffectedPartiesExceptTheActor() {
+        seedPending(100L, b, a, 500.0); // B owes A 500
+        debtService.createDebt(req("3333333333", "2222222222", 500.0), "c@example.com"); // C owes B 500 (actor = C)
+
+        verify(notificationService).notify(eq("a@example.com"), eq("REROUTED"), anyString(), any());
+        verify(notificationService).notify(eq("b@example.com"), eq("REROUTED"), anyString(), any());
+        verify(notificationService, never()).notify(eq("c@example.com"), eq("REROUTED"), anyString(), any());
     }
 }

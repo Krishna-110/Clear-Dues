@@ -9,24 +9,35 @@ const TransactionCard = ({ debtor, creditor, amount, status, note }) => {
   const amountValue = amount || 0;
   const isSettled = status === 'SETTLED';
   const isUnconfirmed = status === 'UNCONFIRMED';
+  const isDeclined = status === 'DECLINED';
+  const isDeleted = status === 'DELETED';
+  const isMuted = isSettled || isDeclined || isDeleted; // inactive -> greyed / struck-through
 
   return (
-    <View style={[styles.card, Theme.shadow.light, isSettled && styles.settledCard]}>
+    <View style={[styles.card, Theme.shadow.light, isMuted && styles.settledCard]}>
       <View style={styles.personBlock}>
-        <View style={[styles.avatar, isSettled && styles.settledAvatar]}>
-          <Text style={[styles.avatarText, isSettled && styles.settledText]}>{debtorName.charAt(0).toUpperCase()}</Text>
+        <View style={[styles.avatar, isMuted && styles.settledAvatar]}>
+          <Text style={[styles.avatarText, isMuted && styles.settledText]}>{debtorName.charAt(0).toUpperCase()}</Text>
         </View>
         <View style={styles.details}>
-          <Text style={[styles.name, isSettled && styles.settledText]} numberOfLines={1}>{debtorName}</Text>
-          <Text style={styles.label}>{isSettled ? 'Owed' : 'Owes'}</Text>
+          <Text style={[styles.name, isMuted && styles.settledText]} numberOfLines={1}>{debtorName}</Text>
+          <Text style={styles.label}>{isMuted ? 'Owed' : 'Owes'}</Text>
         </View>
       </View>
-      
+
       <View style={styles.connector}>
-        <Text style={[styles.amount, isSettled && styles.settledText]}>₹{amountValue}</Text>
+        <Text style={[styles.amount, isMuted && styles.settledText]}>₹{amountValue}</Text>
         {isSettled ? (
           <View style={styles.settledBadge}>
             <Text style={styles.settledBadgeText}>SETTLED</Text>
+          </View>
+        ) : isDeclined ? (
+          <View style={styles.declinedBadge}>
+            <Text style={styles.declinedBadgeText}>DECLINED</Text>
+          </View>
+        ) : isDeleted ? (
+          <View style={styles.deletedBadge}>
+            <Text style={styles.deletedBadgeText}>DELETED</Text>
           </View>
         ) : isUnconfirmed ? (
           <View style={styles.awaitingBadge}>
@@ -40,12 +51,12 @@ const TransactionCard = ({ debtor, creditor, amount, status, note }) => {
       </View>
 
       <View style={[styles.personBlock, { alignItems: 'flex-end' }]}>
-        <View style={[styles.avatar, { backgroundColor: Theme.colors.secondary + '15' }, isSettled && styles.settledAvatar]}>
-          <Text style={[styles.avatarText, { color: Theme.colors.secondary }, isSettled && styles.settledText]}>{creditorName.charAt(0).toUpperCase()}</Text>
+        <View style={[styles.avatar, { backgroundColor: Theme.colors.secondary + '15' }, isMuted && styles.settledAvatar]}>
+          <Text style={[styles.avatarText, { color: Theme.colors.secondary }, isMuted && styles.settledText]}>{creditorName.charAt(0).toUpperCase()}</Text>
         </View>
         <View style={[styles.details, { alignItems: 'flex-end' }]}>
-          <Text style={[styles.name, isSettled && styles.settledText]} numberOfLines={1}>{creditorName}</Text>
-          <Text style={styles.label}>{isSettled ? 'Recvd' : 'Gets'}</Text>
+          <Text style={[styles.name, isMuted && styles.settledText]} numberOfLines={1}>{creditorName}</Text>
+          <Text style={styles.label}>{isMuted ? 'Recvd' : 'Gets'}</Text>
         </View>
       </View>
       
@@ -166,6 +177,32 @@ const styles = StyleSheet.create({
     fontSize: 8,
     fontWeight: '900',
     color: Theme.colors.accent,
+  },
+  declinedBadge: {
+    backgroundColor: Theme.colors.danger + '18',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginTop: 2,
+    borderWidth: 0.5,
+    borderColor: Theme.colors.danger + '50',
+  },
+  declinedBadgeText: {
+    fontSize: 8,
+    fontWeight: '900',
+    color: Theme.colors.danger,
+  },
+  deletedBadge: {
+    backgroundColor: Theme.colors.border,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginTop: 2,
+  },
+  deletedBadgeText: {
+    fontSize: 8,
+    fontWeight: '900',
+    color: Theme.colors.textSecondary,
   },
   noteOverlay: {
     position: 'absolute',

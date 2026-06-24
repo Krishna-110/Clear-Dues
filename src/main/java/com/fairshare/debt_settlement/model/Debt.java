@@ -34,9 +34,13 @@ public class Debt {
     private Double amount;
 
     @Column(nullable = false)
-    private String status = "PENDING"; // PENDING or SETTLED
+    private String status = "PENDING"; // UNCONFIRMED | PENDING | SETTLED | DECLINED | DELETED
 
     private java.time.LocalDateTime settledAt;
 
     private String note;
+
+    // Soft-delete audit trail: a deleted debt keeps its row so a mistake is visible/recoverable.
+    private java.time.LocalDateTime deletedAt;
+    private String deletedBy;
 }

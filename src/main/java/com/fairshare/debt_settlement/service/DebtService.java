@@ -18,6 +18,7 @@ public class DebtService {
     private final PersonRepository personRepository;
     private final DebtRepository debtRepository;
     private final SmsService smsService;
+    private final NotificationService notificationService;
 
     /**
      * Records a debt. A debt you record against SOMEONE ELSE starts UNCONFIRMED and must be
@@ -49,13 +50,16 @@ public class DebtService {
             // You're recording your own debt -> no confirmation needed.
             debt.setStatus("PENDING");
             Debt saved = debtRepository.save(debt);
-            simplifyConnectedComponents();
+            simplifyConnectedComponents(currentUserEmail);
             return saved;
         }
 
-        // Proposed against someone else -> wait for them to accept; notify them.
+        // Proposed against someone else -> wait for them to accept; notify them (in-app + SMS).
         debt.setStatus("UNCONFIRMED");
         Debt saved = debtRepository.save(debt);
+        notificationService.notify(debtor.getEmail(), "PROPOSED",
+                creditor.getName() + " recorded a ₹" + fmt(saved.getAmount()) + " debt for you. Accept or decline.",
+                saved.getId());
         notifyDebtor(saved);
         return saved;
     }
@@ -80,12 +84,45 @@ public class DebtService {
             throw new RuntimeException("Unauthorized: You are not the debtor.");
         }
         if (!"UNCONFIRMED".equals(debt.getStatus())) {
-            return debt; // already accepted/settled - nothing to do
+            return debt; // already accepted/declined/settled - nothing to do
         }
 
         debt.setStatus("PENDING");
         debtRepository.save(debt);
-        simplifyConnectedComponents();
+        if (debt.getCreditor() != null) {
+            notificationService.notify(debt.getCreditor().getEmail(), "ACCEPTED",
+                    debt.getDebtor().getName() + " accepted your ₹" + fmt(debt.getAmount()) + " entry.",
+                    debt.getId());
+        }
+        simplifyConnectedComponents(userEmail);
+        return debt;
+    }
+
+    /**
+     * The debtor declines a proposed (UNCONFIRMED) debt. The row is kept with status DECLINED so it
+     * stays visible in both parties' history (instead of silently vanishing). The proposer is notified.
+     * Only the debtor may decline.
+     */
+    @org.springframework.transaction.annotation.Transactional
+    public Debt declineDebt(Long debtId, String userEmail) {
+        Debt debt = debtRepository.findById(debtId)
+                .orElseThrow(() -> new RuntimeException("Debt not found"));
+
+        if (debt.getDebtor() == null || debt.getDebtor().getEmail() == null
+                || !debt.getDebtor().getEmail().equalsIgnoreCase(userEmail)) {
+            throw new RuntimeException("Unauthorized: You are not the debtor.");
+        }
+        if (!"UNCONFIRMED".equals(debt.getStatus())) {
+            return debt; // only a pending proposal can be declined
+        }
+
+        debt.setStatus("DECLINED");
+        debtRepository.save(debt);
+        if (debt.getCreditor() != null) {
+            notificationService.notify(debt.getCreditor().getEmail(), "DECLINED",
+                    debt.getDebtor().getName() + " declined your ₹" + fmt(debt.getAmount()) + " entry.",
+                    debt.getId());
+        }
         return debt;
     }
 
@@ -101,6 +138,11 @@ public class DebtService {
      */
     @org.springframework.transaction.annotation.Transactional
     public Set<Long> simplifyConnectedComponents() {
+        return simplifyConnectedComponents(null);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public Set<Long> simplifyConnectedComponents(String actorEmail) {
         List<Debt> pending = debtRepository.findAll().stream()
                 .filter(d -> "PENDING".equals(d.getStatus()))
                 .filter(d -> d.getDebtor() != null && d.getCreditor() != null)
@@ -136,6 +178,13 @@ public class DebtService {
             // Already in minimal form -> nothing to do (avoids needless churn / history noise).
             if (sameEdges(component, optimized)) continue;
 
+            // Everyone in this group is affected by the re-route.
+            Set<String> affectedEmails = new HashSet<>();
+            for (Debt d : component) {
+                if (d.getDebtor().getEmail() != null) affectedEmails.add(d.getDebtor().getEmail());
+                if (d.getCreditor().getEmail() != null) affectedEmails.add(d.getCreditor().getEmail());
+            }
+
             // Settle the old rows...
             for (Debt d : component) {
                 d.setStatus("SETTLED");
@@ -151,6 +200,13 @@ public class DebtService {
                 nd.setAmount(round(t.amount));
                 nd.setNote("Simplified");
                 debtRepository.save(nd);
+            }
+
+            // Notify each affected person (except whoever triggered this) that their balances moved.
+            for (String email : affectedEmails) {
+                if (actorEmail != null && actorEmail.equalsIgnoreCase(email)) continue;
+                notificationService.notify(email, "REROUTED",
+                        "Your balances were updated — some debts were simplified.", null);
             }
         }
         return settledIds;
@@ -312,9 +368,88 @@ public class DebtService {
         return cleaned;
     }
 
-    public void deleteDebt(Long id) {
+    /**
+     * Soft-delete: the row is KEPT with status DELETED (plus who/when) so an accidental delete is
+     * visible and recoverable, instead of silently wiping an obligation. Only a party may delete.
+     * The other party is notified.
+     */
+    @org.springframework.transaction.annotation.Transactional
+    public void deleteDebt(Long id, String userEmail) {
         if (id == null) throw new IllegalArgumentException("ID must not be null");
-        debtRepository.deleteById(id);
+        Debt debt = debtRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Debt not found"));
+        if (!isParty(debt, userEmail)) {
+            throw new RuntimeException("Unauthorized: you are not a party to this debt.");
+        }
+        if ("DELETED".equals(debt.getStatus())) return;
+
+        debt.setStatus("DELETED");
+        debt.setDeletedAt(LocalDateTime.now());
+        debt.setDeletedBy(userEmail);
+        debtRepository.save(debt);
+        notifyOtherParty(debt, userEmail, "DELETED",
+                " deleted a debt of ₹" + fmt(debt.getAmount()) + ".");
+    }
+
+    // Backwards-compatible overload.
+    @org.springframework.transaction.annotation.Transactional
+    public void deleteDebt(Long id) {
+        deleteDebt(id, null);
+    }
+
+    /**
+     * Restores a soft-deleted debt back to active (PENDING) and re-simplifies the ledger.
+     * Only a party may restore.
+     */
+    @org.springframework.transaction.annotation.Transactional
+    public Debt restoreDebt(Long id, String userEmail) {
+        Debt debt = debtRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Debt not found"));
+        if (!isParty(debt, userEmail)) {
+            throw new RuntimeException("Unauthorized: you are not a party to this debt.");
+        }
+        if (!"DELETED".equals(debt.getStatus())) return debt;
+
+        debt.setStatus("PENDING");
+        debt.setDeletedAt(null);
+        debt.setDeletedBy(null);
+        debtRepository.save(debt);
+        notifyOtherParty(debt, userEmail, "RESTORED",
+                " restored a debt of ₹" + fmt(debt.getAmount()) + ".");
+        simplifyConnectedComponents(userEmail);
+        return debt;
+    }
+
+    private boolean isParty(Debt debt, String userEmail) {
+        if (userEmail == null) return false;
+        Person d = debt.getDebtor();
+        Person c = debt.getCreditor();
+        return (d != null && d.getEmail() != null && d.getEmail().equalsIgnoreCase(userEmail))
+            || (c != null && c.getEmail() != null && c.getEmail().equalsIgnoreCase(userEmail));
+    }
+
+    // Notifies whichever party did NOT perform the action.
+    private void notifyOtherParty(Debt debt, String actorEmail, String type, String suffix) {
+        Person d = debt.getDebtor();
+        Person c = debt.getCreditor();
+        String actorName = "Someone";
+        Person other = null;
+        if (d != null && d.getEmail() != null && d.getEmail().equalsIgnoreCase(actorEmail)) {
+            actorName = d.getName();
+            other = c;
+        } else if (c != null && c.getEmail() != null && c.getEmail().equalsIgnoreCase(actorEmail)) {
+            actorName = c.getName();
+            other = d;
+        }
+        if (other != null && other.getEmail() != null) {
+            notificationService.notify(other.getEmail(), type, actorName + suffix, debt.getId());
+        }
+    }
+
+    // Formats an amount without a trailing ".0" for whole numbers.
+    private String fmt(double amount) {
+        if (amount == Math.rint(amount)) return String.valueOf((long) amount);
+        return String.valueOf(Math.round(amount * 100.0) / 100.0);
     }
 
     public Double getTotalOwed(Long userId) {

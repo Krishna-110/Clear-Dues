@@ -28,6 +28,16 @@ public class DebtController {
         return ResponseEntity.ok(debtService.acceptDebt(id, currentUserEmail()));
     }
 
+    @PostMapping("/{id}/decline")
+    public ResponseEntity<Debt> declineDebt(@PathVariable Long id) {
+        return ResponseEntity.ok(debtService.declineDebt(id, currentUserEmail()));
+    }
+
+    @PostMapping("/{id}/restore")
+    public ResponseEntity<Debt> restoreDebt(@PathVariable Long id) {
+        return ResponseEntity.ok(debtService.restoreDebt(id, currentUserEmail()));
+    }
+
     private String currentUserEmail() {
         Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         if (principal instanceof UserDetails) {
@@ -48,7 +58,7 @@ public class DebtController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteDebt(@PathVariable Long id) {
-        debtService.deleteDebt(id);
+        debtService.deleteDebt(id, currentUserEmail());
         return ResponseEntity.noContent().build();
     }
 }
