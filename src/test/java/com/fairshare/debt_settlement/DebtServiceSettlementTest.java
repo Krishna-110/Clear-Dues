@@ -150,6 +150,17 @@ class DebtServiceSettlementTest {
         verify(smsService, never()).sendDebtNotification(anyString(), anyString(), anyString(), anyBoolean(), anyString());
     }
 
+    @Test
+    void recordingBetweenTwoOthers_isRejected() {
+        // C tries to record "A owes B 500" - C is neither the debtor nor the creditor.
+        assertThatThrownBy(() ->
+                debtService.createDebt(req("1111111111", "2222222222", 500.0), "c@example.com"))
+                .isInstanceOf(RuntimeException.class);
+
+        // Nothing was persisted.
+        assertThat(db).isEmpty();
+    }
+
     // ---- simplification math (recorded by the debtor -> auto-confirmed -> simplified) ----
 
     @Test

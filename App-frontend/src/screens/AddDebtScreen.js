@@ -7,14 +7,16 @@ import { Save, UserCircle, ChevronDown, Paperclip, UserPlus } from 'lucide-react
 
 const AddDebtScreen = ({ navigation }) => {
   const { persons, addDebt, fetchData, user } = useStore();
-  const allParticipants = user ? [{ ...user, name: 'Myself (You)' }, ...persons] : persons;
-  const [debtor, setDebtor] = useState(null);
-  const [creditor, setCreditor] = useState(null);
+  const [iPaid, setIPaid] = useState(true); // true = "I paid" (you're the creditor); false = "I owe"
+  const [otherPerson, setOtherPerson] = useState(null);
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [showPersonModal, setShowPersonModal] = useState(false);
-  const [selectingFor, setSelectingFor] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // One side of the transaction is ALWAYS you; the other is a friend. No friend<->friend entries.
+  const creditor = iPaid ? user : otherPerson; // who paid
+  const debtor = iPaid ? otherPerson : user;   // who owes
 
   const submitDebt = async () => {
     setIsSubmitting(true);
@@ -23,60 +25,54 @@ const AddDebtScreen = ({ navigation }) => {
         debtorPhone: debtor.phoneNumber,
         creditorPhone: creditor.phoneNumber,
         amount: parseFloat(amount),
-        note: note
+        note: note,
       });
       fetchData();
-      const isOwnDebt = debtor?.phoneNumber === user?.phoneNumber;
-      const debtorName = debtor?.name || 'them';
+      const friendName = otherPerson?.name || 'them';
       setAmount('');
       setNote('');
-      setDebtor(null);
-      setCreditor(null);
+      setOtherPerson(null);
       Alert.alert(
         'Success',
-        isOwnDebt
-          ? 'Transaction recorded.'
-          : `Sent to ${debtorName} for confirmation. It becomes active once they accept.`
+        iPaid
+          ? `Sent to ${friendName} for confirmation. It becomes active once they accept.`
+          : 'Transaction recorded.'
       );
       navigation.navigate('Dashboard');
     } catch (error) {
-      Alert.alert('Error', 'Failed to save transaction. Please try again.');
+      const msg = error.response?.data?.message || 'Failed to save transaction. Please try again.';
+      Alert.alert('Error', msg);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleSave = () => {
-    if (!debtor || !creditor || !amount) {
-      Alert.alert('Missing Fields', 'Please select both participants and enter an amount.');
+    if (!user) {
+      Alert.alert('Not Ready', 'Your profile is still loading. Please try again in a moment.');
       return;
     }
-
-    if (debtor.phoneNumber === creditor.phoneNumber) {
-      Alert.alert('Invalid Selection', 'The payer and the ower cannot be the same person.');
+    if (!otherPerson || !amount) {
+      Alert.alert('Missing Fields', 'Please choose a friend and enter an amount.');
       return;
     }
-
-    if (isNaN(parseFloat(amount))) {
-      Alert.alert('Invalid Amount', 'Please enter a valid numeric amount.');
+    if (isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
+      Alert.alert('Invalid Amount', 'Please enter a valid amount greater than zero.');
       return;
     }
-
     submitDebt();
   };
 
-  const openPersonPicker = (target) => {
-    if (allParticipants.length === 0) {
-      Alert.alert('No People Found', 'Please add some people in the "Persons" tab before recording a transaction.');
+  const openPersonPicker = () => {
+    if (persons.length === 0) {
+      Alert.alert('No Friends Found', 'Please add some friends in the "Persons" tab before recording a transaction.');
       return;
     }
-    setSelectingFor(target);
     setShowPersonModal(true);
   };
 
   const selectPerson = (person) => {
-    if (selectingFor === 'debtor') setDebtor(person);
-    else setCreditor(person);
+    setOtherPerson(person);
     setShowPersonModal(false);
   };
 
@@ -85,39 +81,53 @@ const AddDebtScreen = ({ navigation }) => {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
           <Text style={styles.title}>Record Transaction</Text>
-          <Text style={styles.subtitle}>Enter the details of your shared expense below.</Text>
+          <Text style={styles.subtitle}>Log money you paid for a friend, or money you owe one.</Text>
         </View>
 
         {/* Form Group */}
         <View style={styles.form}>
-          
-          {/* Who Paid? (Creditor) */}
-          <Text style={styles.label}>Who paid?</Text>
-          <TouchableOpacity 
-            style={styles.picker} 
-            onPress={() => openPersonPicker('creditor')}
+
+          {/* Direction toggle - one side is always you */}
+          <Text style={styles.label}>This transaction is...</Text>
+          <View style={styles.toggleRow}>
+            <TouchableOpacity
+              style={[styles.toggleBtn, iPaid && styles.toggleBtnActive]}
+              onPress={() => setIPaid(true)}
+              disabled={isSubmitting}
+            >
+              <Text style={[styles.toggleText, iPaid && styles.toggleTextActive]}>I paid</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.toggleBtn, !iPaid && styles.toggleBtnActive]}
+              onPress={() => setIPaid(false)}
+              disabled={isSubmitting}
+            >
+              <Text style={[styles.toggleText, !iPaid && styles.toggleTextActive]}>I owe</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* The other person (always a friend) */}
+          <Text style={styles.label}>{iPaid ? 'Who owes you?' : 'Who did you pay?'}</Text>
+          <TouchableOpacity
+            style={styles.picker}
+            onPress={openPersonPicker}
             disabled={isSubmitting}
           >
-            <UserCircle size={20} color={creditor ? Theme.colors.primary : Theme.colors.textSecondary} />
-            <Text style={[styles.pickerText, !creditor && styles.placeholder]}>
-              {creditor ? creditor.name : 'Select the person who paid'}
+            <UserCircle size={20} color={otherPerson ? Theme.colors.primary : Theme.colors.textSecondary} />
+            <Text style={[styles.pickerText, !otherPerson && styles.placeholder]}>
+              {otherPerson ? otherPerson.name : 'Select a friend'}
             </Text>
             <ChevronDown size={16} color={Theme.colors.textSecondary} />
           </TouchableOpacity>
 
-          {/* Who Owes? (Debtor) */}
-          <Text style={styles.label}>Who owes?</Text>
-          <TouchableOpacity 
-            style={styles.picker} 
-            onPress={() => openPersonPicker('debtor')}
-            disabled={isSubmitting}
-          >
-            <UserCircle size={20} color={debtor ? Theme.colors.primary : Theme.colors.textSecondary} />
-            <Text style={[styles.pickerText, !debtor && styles.placeholder]}>
-              {debtor ? debtor.name : 'Select the person who owes'}
+          {/* Plain-language summary so the direction is unmistakable */}
+          {otherPerson && (
+            <Text style={styles.summaryLine}>
+              {iPaid
+                ? `${otherPerson.name} will owe you${amount ? ' ₹' + amount : ''}.`
+                : `You will owe ${otherPerson.name}${amount ? ' ₹' + amount : ''}.`}
             </Text>
-            <ChevronDown size={16} color={Theme.colors.textSecondary} />
-          </TouchableOpacity>
+          )}
 
           {/* Amount */}
           <Text style={styles.label}>Amount</Text>
@@ -147,8 +157,8 @@ const AddDebtScreen = ({ navigation }) => {
           </View>
         </View>
 
-        <TouchableOpacity 
-          style={[styles.saveButton, Theme.shadow.medium, isSubmitting && { opacity: 0.7 }]} 
+        <TouchableOpacity
+          style={[styles.saveButton, Theme.shadow.medium, isSubmitting && { opacity: 0.7 }]}
           onPress={handleSave}
           disabled={isSubmitting}
         >
@@ -163,17 +173,17 @@ const AddDebtScreen = ({ navigation }) => {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Person Picker Modal */}
+      {/* Friend Picker Modal - friends only, never yourself */}
       <Modal visible={showPersonModal} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Select Person</Text>
+            <Text style={styles.modalTitle}>Select a Friend</Text>
             <FlatList
-              data={allParticipants}
+              data={persons}
               keyExtractor={(item) => item.phoneNumber || item.email}
               renderItem={({ item }) => (
-                <TouchableOpacity 
-                  style={styles.personItem} 
+                <TouchableOpacity
+                  style={styles.personItem}
                   onPress={() => selectPerson(item)}
                 >
                   <Text style={styles.personName}>{item.name}</Text>
@@ -191,7 +201,7 @@ const AddDebtScreen = ({ navigation }) => {
                 <Text style={styles.emptyModalText}>
                   To split debts, you need to add your friends or sync your phone contacts first.
                 </Text>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={[styles.modalAddButton, Theme.shadow.light]}
                   onPress={() => {
                     setShowPersonModal(false);
@@ -244,6 +254,37 @@ const styles = StyleSheet.create({
     color: Theme.colors.text,
     marginBottom: Theme.spacing.xs,
     marginTop: Theme.spacing.md,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    backgroundColor: Theme.colors.surface,
+    borderRadius: Theme.borderRadius.lg,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+    padding: 4,
+  },
+  toggleBtn: {
+    flex: 1,
+    paddingVertical: Theme.spacing.sm,
+    alignItems: 'center',
+    borderRadius: Theme.borderRadius.md,
+  },
+  toggleBtnActive: {
+    backgroundColor: Theme.colors.primary,
+  },
+  toggleText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Theme.colors.textSecondary,
+  },
+  toggleTextActive: {
+    color: Theme.colors.white,
+  },
+  summaryLine: {
+    fontSize: 13,
+    color: Theme.colors.textSecondary,
+    fontStyle: 'italic',
+    marginTop: Theme.spacing.xs,
   },
   picker: {
     flexDirection: 'row',

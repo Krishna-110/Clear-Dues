@@ -36,6 +36,16 @@ public class DebtService {
         Person creditor = personRepository.findByPhoneNumber(creditorPhone)
                 .orElseThrow(() -> new RuntimeException("Creditor not found with phone: " + request.getCreditorPhone()));
 
+        // A user may only record a transaction they are part of (as debtor or creditor); you cannot
+        // create a debt between two other people. The app UI also forces one side to be the logged-in
+        // user, so this is defense-in-depth for direct API calls.
+        boolean recorderIsParty =
+                (debtor.getEmail() != null && debtor.getEmail().equalsIgnoreCase(currentUserEmail))
+             || (creditor.getEmail() != null && creditor.getEmail().equalsIgnoreCase(currentUserEmail));
+        if (currentUserEmail != null && !recorderIsParty) {
+            throw new IllegalArgumentException("You can only record a transaction you are part of.");
+        }
+
         Debt debt = new Debt();
         debt.setDebtor(debtor);
         debt.setCreditor(creditor);
