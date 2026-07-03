@@ -187,12 +187,12 @@ const DashboardScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* AppBar: Title "Debt Settlement" per document */}
+      {/* AppBar: Title */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <View style={styles.titleRow}>
             <HandCoins size={24} color={Theme.colors.primary} />
-            <Text style={styles.headerTitle}>Debt Settlement</Text>
+            <Text style={styles.headerTitle}>Settlement</Text>
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity 
