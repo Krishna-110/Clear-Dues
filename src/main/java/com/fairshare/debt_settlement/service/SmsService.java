@@ -18,7 +18,7 @@ public class SmsService {
     @Value("${vonage.api.secret}")
     private String apiSecret;
 
-    @Value("${vonage.brand.name:ClearDues}")
+    @Value("${vonage.brand.name:Settlement}")
     private String brandName;
 
     @Value("${vonage.app.link:https://cleardues.app/download}")
@@ -43,9 +43,9 @@ public class SmsService {
         String messageText;
 
         if (isRegistered) {
-            messageText = String.format("Hi %s, %s recorded a debt of ₹%s for you on ClearDues.", debtorName, creditorName, amount);
+            messageText = String.format("Hi %s, %s recorded a debt of ₹%s for you on Settlement.", debtorName, creditorName, amount);
         } else {
-            messageText = String.format("Hi %s, %s has recorded a debt for you on ClearDues. Download the app to manage your dues: %s", debtorName, creditorName, appLink);
+            messageText = String.format("Hi %s, %s has recorded a debt for you on Settlement. Download the app to manage your dues: %s", debtorName, creditorName, appLink);
         }
 
         TextMessage message = new TextMessage(brandName, formattedPhone, messageText);

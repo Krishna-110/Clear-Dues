@@ -132,7 +132,7 @@ const LandingScreen = () => {
           </View>
 
           <View style={styles.textContainer}>
-            <Text style={styles.title}>Clear Dues</Text>
+            <Text style={styles.title}>Settlement</Text>
             <View style={styles.pillTag}>
               <Text style={styles.pillText}>SMART SETTLEMENTS</Text>
             </View>

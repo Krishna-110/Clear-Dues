@@ -151,6 +151,18 @@ class DebtServiceSettlementTest {
     }
 
     @Test
+    void editingASettledDebt_isRejected() {
+        Debt settled = seedPending(100L, a, b, 500.0);
+        settled.setStatus("SETTLED");
+
+        assertThatThrownBy(() ->
+                debtService.updateDebt(100L, req("1111111111", "2222222222", 999.0)))
+                .isInstanceOf(RuntimeException.class);
+
+        assertThat(settled.getAmount()).isEqualTo(500.0); // unchanged
+    }
+
+    @Test
     void recordingBetweenTwoOthers_isRejected() {
         // C tries to record "A owes B 500" - C is neither the debtor nor the creditor.
         assertThatThrownBy(() ->

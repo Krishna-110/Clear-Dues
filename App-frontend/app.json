@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Clear Dues",
+    "name": "Settlement",
     "slug": "cleardues",
     "scheme": "cleardues",
     "version": "1.0.0",
@@ -16,7 +16,8 @@
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.cleardues"
     },
     "android": {
       "adaptiveIcon": {

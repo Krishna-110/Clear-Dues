@@ -354,6 +354,12 @@ public class DebtService {
         Debt debt = debtRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Debt record not found"));
 
+        // Only an active (PENDING) transaction can be edited. Settled / declined / deleted rows are
+        // historical and must stay immutable.
+        if (!"PENDING".equals(debt.getStatus())) {
+            throw new IllegalArgumentException("Only pending transactions can be edited.");
+        }
+
         String debtorPhone = normalizePhone(request.getDebtorPhone());
         String creditorPhone = normalizePhone(request.getCreditorPhone());
 

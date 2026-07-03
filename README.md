@@ -1,6 +1,6 @@
-# 💸 Clear Dues
+# 💸 Settlement
 
-A production-grade Spring Boot REST API built to track and settle shared expenses within groups. Clear Dues uses a greedy graph algorithm to minimize the total number of transactions required to settle debts, backed by a stateless OAuth2 + JWT security architecture.
+A production-grade Spring Boot REST API built to track and settle shared expenses within groups. Settlement uses a greedy graph algorithm to minimize the total number of transactions required to settle debts, backed by a stateless OAuth2 + JWT security architecture.
 
 ## ✨ Core Features
 

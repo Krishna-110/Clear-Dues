@@ -95,6 +95,12 @@ const DashboardScreen = ({ navigation }) => {
   }, [fetchData]);
 
   const openEditModal = (debt) => {
+    // Settled / declined transactions are historical and can't be edited.
+    // (Deleted rows still open the modal so they can be restored.)
+    if (debt.status === 'SETTLED' || debt.status === 'DECLINED') {
+      Alert.alert('Locked', `This transaction is ${debt.status.toLowerCase()} and can no longer be edited.`);
+      return;
+    }
     setSelectedDebt(debt);
     setEditAmount(debt.amount.toString());
     setEditNote(debt.note || '');

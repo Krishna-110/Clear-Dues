@@ -58,7 +58,7 @@ const ManagePersonsScreen = () => {
       if (contacts.length > 0) {
         const phoneNumbers = contacts.map(c => c.phoneNumber);
         
-        // 1. Check which contacts are registered on ClearDues
+        // 1. Check which contacts are registered on Settlement
         const registrationData = await apiService.checkBatchContacts(phoneNumbers);
         const registeredMap = new Map();
         registrationData.forEach(r => registeredMap.set(r.normalized, r));
@@ -98,7 +98,7 @@ const ManagePersonsScreen = () => {
         
         setViewMode('contacts');
         if (registeredContacts.length > 0) {
-          Alert.alert('Sync Complete', `Found and added ${registeredContacts.length} friends who are already on ClearDues!`);
+          Alert.alert('Sync Complete', `Found and added ${registeredContacts.length} friends who are already on Settlement!`);
         }
       } else {
         Alert.alert('No Contacts', 'No valid contacts with phone numbers found.');
@@ -112,7 +112,7 @@ const ManagePersonsScreen = () => {
   };
 
   const inviteContact = (contact) => {
-    const message = `Hey ${contact.name}! Join me on ClearDues to track and settle our shared expenses easily. Download here: https://cleardues.app`;
+    const message = `Hey ${contact.name}! Join me on Settlement to track and settle our shared expenses easily. Download here: https://cleardues.app`;
     const url = `sms:${contact.phoneNumber}${Platform.OS === 'ios' ? '&' : '?'}body=${encodeURIComponent(message)}`;
     Linking.openURL(url);
   };
@@ -267,7 +267,7 @@ const ManagePersonsScreen = () => {
                   {viewMode === 'contacts' && item.registered && (
                     <View style={styles.registeredBadge}>
                       <CheckCircle2 size={12} color={Theme.colors.white} />
-                      <Text style={styles.registeredText}>On ClearDues</Text>
+                      <Text style={styles.registeredText}>On Settlement</Text>
                     </View>
                   )}
                 </View>
