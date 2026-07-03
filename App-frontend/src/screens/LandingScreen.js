@@ -125,7 +125,7 @@ const LandingScreen = () => {
       <View style={styles.content}>
         <Animated.View style={[styles.mainContainer, { opacity: contentFade, transform: [{ translateY: contentMove }] }]}>
           <View style={styles.logoContainer}>
-            <Logo size={200} />
+            <Logo size={168} />
           </View>
 
           <View style={styles.textContainer}>
@@ -206,11 +206,19 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   logoContainer: {
-    width: 200,
-    height: 200,
+    width: 168,
+    height: 168,
     marginBottom: Theme.spacing.xl,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: 34,             // ~matches the logo's rounded corners (100/500 * 168)
+    backgroundColor: '#1A1D24',   // same as the mark, so the badge reads as one solid shape
+    // soft elevation so the dark badge lifts off the white background
+    shadowColor: '#0B1220',
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.28,
+    shadowRadius: 26,
+    elevation: 14,
   },
   logo: {
     width: '100%',
