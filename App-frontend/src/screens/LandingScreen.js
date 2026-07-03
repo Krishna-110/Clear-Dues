@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../theme/Theme';
 import { useNavigation } from '@react-navigation/native';
 import { ChevronRight } from 'lucide-react-native';
+import Logo from '../components/Logo';
 import * as WebBrowserInstance from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import apiService from '../services/apiService';
@@ -124,11 +125,7 @@ const LandingScreen = () => {
       <View style={styles.content}>
         <Animated.View style={[styles.mainContainer, { opacity: contentFade, transform: [{ translateY: contentMove }] }]}>
           <View style={styles.logoContainer}>
-            <Image 
-              source={require('../../assets/logo.png')} 
-              style={styles.logo}
-              resizeMode="contain"
-            />
+            <Logo size={200} />
           </View>
 
           <View style={styles.textContainer}>
