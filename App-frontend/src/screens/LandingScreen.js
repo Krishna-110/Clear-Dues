@@ -78,10 +78,10 @@ const LandingScreen = () => {
     
     setIsAuthenticating(true);
     const authUrl = apiService.getAuthUrl();
-    // The redirect URL tells the auth session which URL "completes" the flow. Its scheme
-    // (cleardues://) must match the deep link the backend redirects to, or the session just
-    // dismisses and we never receive the token.
-    const redirectUrl = Linking.createURL('login-success');
+    // Must match EXACTLY the deep link the backend redirects to
+    // (app.frontend.redirect-uri = cleardues://--/login-success), otherwise the auth session
+    // won't recognize the completion URL and the token is dropped.
+    const redirectUrl = 'cleardues://--/login-success';
 
     try {
       const result = await WebBrowserInstance.openAuthSessionAsync(authUrl, redirectUrl);
