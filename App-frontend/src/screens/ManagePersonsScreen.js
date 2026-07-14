@@ -195,7 +195,7 @@ const ManagePersonsScreen = () => {
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <Users size={24} color={Theme.colors.primary} />
-          <Text style={styles.headerTitle}>People</Text>
+          <Text style={styles.headerTitle}>Circle</Text>
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity 

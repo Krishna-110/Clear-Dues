@@ -8,6 +8,8 @@ export const useStore = create((set, get) => ({
   debts: [],
   settlements: [],
   notifications: [],
+  groups: [],
+  gamification: null,
   user: null,
   isAuthenticated: false,
   isLoading: false,
@@ -40,6 +42,8 @@ export const useStore = create((set, get) => ({
       debts: [],
       settlements: [],
       notifications: [],
+      groups: [],
+      gamification: null,
       error: null
     });
   },
@@ -53,14 +57,16 @@ export const useStore = create((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      const [persons, debts, settlements, user, notifications] = await Promise.all([
+      const [persons, debts, settlements, user, notifications, groups, gamification] = await Promise.all([
         apiService.getPersons(),
         apiService.getDebts(),
         apiService.getSettlements(),
         apiService.getProfile(),
         apiService.getNotifications().catch(() => []),
+        apiService.getGroups().catch(() => []),
+        apiService.getGamification().catch(() => null),
       ]);
-      set({ persons, debts, settlements, user, notifications, isLoading: false });
+      set({ persons, debts, settlements, user, notifications, groups, gamification, isLoading: false });
     } catch (err) {
       const errorMessage = err.response?.data?.message || err.message || 'Network error';
       set({ error: errorMessage, isLoading: false });
@@ -188,6 +194,36 @@ export const useStore = create((set, get) => ({
       apiService.getNotifications().catch(() => get().notifications),
     ]);
     set({ debts, settlements, notifications });
+  },
+
+  // Groups
+  createGroup: async (name) => {
+    const group = await apiService.createGroup(name);
+    set((state) => ({ groups: [...state.groups, group] }));
+    return group;
+  },
+  joinGroup: async (code) => {
+    const group = await apiService.joinGroup(code);
+    const groups = await apiService.getGroups().catch(() => get().groups);
+    set({ groups });
+    return group;
+  },
+  leaveGroup: async (id) => {
+    await apiService.leaveGroup(id);
+    set((state) => ({ groups: state.groups.filter((g) => g.id !== id) }));
+  },
+
+  // Gamification
+  fetchGamification: async () => {
+    const gamification = await apiService.getGamification().catch(() => get().gamification);
+    set({ gamification });
+  },
+
+  // Profile (name / phone / privacy / notifications)
+  updateMyProfile: async (payload) => {
+    const user = await apiService.updateMyProfile(payload);
+    set({ user });
+    return user;
   },
 
   updateDebt: async (id, debtData) => {

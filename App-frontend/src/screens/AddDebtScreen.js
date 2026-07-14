@@ -6,11 +6,12 @@ import { Theme } from '../theme/Theme';
 import { Save, UserCircle, ChevronDown, Paperclip, UserPlus } from 'lucide-react-native';
 
 const AddDebtScreen = ({ navigation }) => {
-  const { persons, addDebt, fetchData, user } = useStore();
+  const { persons, groups, addDebt, fetchData, user } = useStore();
   const [iPaid, setIPaid] = useState(true); // true = "I paid" (you're the creditor); false = "I owe"
   const [otherPerson, setOtherPerson] = useState(null);
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
+  const [groupId, setGroupId] = useState(null);
   const [showPersonModal, setShowPersonModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -24,8 +25,11 @@ const AddDebtScreen = ({ navigation }) => {
       await addDebt({
         debtorPhone: debtor.phoneNumber,
         creditorPhone: creditor.phoneNumber,
+        debtorId: debtor.id,
+        creditorId: creditor.id,
         amount: parseFloat(amount),
         note: note,
+        groupId: groupId,
       });
       fetchData();
       const friendName = otherPerson?.name || 'them';
@@ -155,6 +159,31 @@ const AddDebtScreen = ({ navigation }) => {
               editable={!isSubmitting}
             />
           </View>
+
+          {groups.length > 0 && (
+            <>
+              <Text style={styles.label}>Group (optional)</Text>
+              <View style={styles.groupChips}>
+                <TouchableOpacity
+                  style={[styles.groupChip, !groupId && styles.groupChipActive]}
+                  onPress={() => setGroupId(null)}
+                  disabled={isSubmitting}
+                >
+                  <Text style={[styles.groupChipText, !groupId && styles.groupChipTextActive]}>None</Text>
+                </TouchableOpacity>
+                {groups.map((g) => (
+                  <TouchableOpacity
+                    key={g.id}
+                    style={[styles.groupChip, groupId === g.id && styles.groupChipActive]}
+                    onPress={() => setGroupId(g.id)}
+                    disabled={isSubmitting}
+                  >
+                    <Text style={[styles.groupChipText, groupId === g.id && styles.groupChipTextActive]} numberOfLines={1}>{g.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          )}
         </View>
 
         <TouchableOpacity
@@ -303,6 +332,33 @@ const styles = StyleSheet.create({
   },
   placeholder: {
     color: Theme.colors.textSecondary,
+  },
+  groupChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: Theme.spacing.xs,
+  },
+  groupChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: Theme.borderRadius.full,
+    backgroundColor: Theme.colors.surface,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+  },
+  groupChipActive: {
+    backgroundColor: Theme.colors.primary,
+    borderColor: Theme.colors.primary,
+  },
+  groupChipText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Theme.colors.text,
+    maxWidth: 140,
+  },
+  groupChipTextActive: {
+    color: Theme.colors.white,
   },
   inputContainer: {
     flexDirection: 'row',

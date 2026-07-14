@@ -3,7 +3,7 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
-import { LayoutDashboard, PlusCircle, HandCoins, Users } from 'lucide-react-native';
+import { LayoutDashboard, PlusCircle, HandCoins, Users, UserCircle } from 'lucide-react-native';
 import { Theme } from './src/theme/Theme';
 import * as Linking from 'expo-linking';
 import { useStore } from './src/store/useStore';
@@ -16,6 +16,7 @@ import AddDebtScreen from './src/screens/AddDebtScreen';
 import SettlementScreen from './src/screens/SettlementScreen';
 import ManagePersonsScreen from './src/screens/ManagePersonsScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
+import AccountScreen from './src/screens/AccountScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -38,6 +39,7 @@ function MainTabs() {
           if (route.name === 'Record') return <PlusCircle size={size} color={color} />;
           if (route.name === 'Settlements') return <HandCoins size={size} color={color} />;
           if (route.name === 'Persons') return <Users size={size} color={color} />;
+          if (route.name === 'Account') return <UserCircle size={size} color={color} />;
         },
         tabBarActiveTintColor: Theme.colors.primary,
         tabBarInactiveTintColor: Theme.colors.textSecondary,
@@ -60,7 +62,8 @@ function MainTabs() {
       />
       <Tab.Screen name="Record" component={AddDebtScreen} />
       <Tab.Screen name="Settlements" component={SettlementScreen} />
-      <Tab.Screen name="Persons" component={ManagePersonsScreen} />
+      <Tab.Screen name="Persons" component={ManagePersonsScreen} options={{ tabBarLabel: 'Circle' }} />
+      <Tab.Screen name="Account" component={AccountScreen} />
     </Tab.Navigator>
   );
 }

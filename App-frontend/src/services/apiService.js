@@ -106,6 +106,35 @@ export const apiService = {
     await api.post('/notifications/read');
   },
 
+  // Groups
+  getGroups: async () => {
+    const response = await api.get('/groups');
+    return response.data;
+  },
+  createGroup: async (name) => {
+    const response = await api.post('/groups', { name });
+    return response.data;
+  },
+  joinGroup: async (code) => {
+    const response = await api.post('/groups/join', { code });
+    return response.data;
+  },
+  leaveGroup: async (id) => {
+    await api.post(`/groups/${id}/leave`);
+  },
+
+  // Gamification
+  getGamification: async () => {
+    const response = await api.get('/gamification/me');
+    return response.data;
+  },
+
+  // Profile
+  updateMyProfile: async (payload) => {
+    const response = await api.put('/persons/me', payload);
+    return response.data;
+  },
+
   // Phone Support
   updateProfilePhone: async (phone) => {
     const response = await api.put('/persons/me/phone', { phone });
