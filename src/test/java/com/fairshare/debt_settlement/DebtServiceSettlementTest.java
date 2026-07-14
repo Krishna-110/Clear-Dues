@@ -4,6 +4,7 @@ import com.fairshare.debt_settlement.dto.CreateDebtRequest;
 import com.fairshare.debt_settlement.model.Debt;
 import com.fairshare.debt_settlement.model.Person;
 import com.fairshare.debt_settlement.repository.DebtRepository;
+import com.fairshare.debt_settlement.repository.GroupRepository;
 import com.fairshare.debt_settlement.repository.PersonRepository;
 import com.fairshare.debt_settlement.service.DebtService;
 import com.fairshare.debt_settlement.service.NotificationService;
@@ -34,6 +35,7 @@ class DebtServiceSettlementTest {
     private DebtRepository debtRepository;
     private SmsService smsService;
     private NotificationService notificationService;
+    private GroupRepository groupRepository;
     private DebtService debtService;
 
     private List<Debt> db;
@@ -49,7 +51,8 @@ class DebtServiceSettlementTest {
         debtRepository = mock(DebtRepository.class);
         smsService = mock(SmsService.class);
         notificationService = mock(NotificationService.class);
-        debtService = new DebtService(personRepository, debtRepository, smsService, notificationService);
+        groupRepository = mock(GroupRepository.class);
+        debtService = new DebtService(personRepository, debtRepository, smsService, notificationService, groupRepository);
 
         a = person(1L, "A", "1111111111");
         b = person(2L, "B", "2222222222");

@@ -34,14 +34,22 @@ public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHan
         OAuth2User oAuth2User = (OAuth2User) authentication.getPrincipal();
         String email = oAuth2User.getAttribute("email");
         String name = oAuth2User.getAttribute("name");
+        String picture = oAuth2User.getAttribute("picture");
 
         // 2. Check if they exist in our database. If they are brand new, register them!
         Person person = personRepository.findByEmail(email).orElseGet(() -> {
             Person newPerson = new Person();
             newPerson.setEmail(email);
             newPerson.setName(name);
+            newPerson.setPictureUrl(picture);
             return personRepository.save(newPerson);
         });
+
+        // Keep the profile picture fresh on subsequent logins.
+        if (picture != null && !picture.equals(person.getPictureUrl())) {
+            person.setPictureUrl(picture);
+            personRepository.save(person);
+        }
 
         // 3. Print the VIP Wristband (Generate the JWT)
         String token = jwtService.generateToken(person.getEmail());

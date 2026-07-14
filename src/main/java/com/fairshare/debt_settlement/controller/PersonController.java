@@ -54,6 +54,15 @@ public class PersonController {
         return ResponseEntity.ok(personService.updateMyPhone(body.get("phone")));
     }
 
+    // PUT /api/persons/me - update name, phone, and privacy/notification preferences
+    @PutMapping("/me")
+    public ResponseEntity<Person> updateMyProfile(
+            @RequestBody com.fairshare.debt_settlement.dto.UpdateProfileRequest request) {
+        return ResponseEntity.ok(personService.updateMyProfile(
+                request.getName(), request.getPhone(),
+                request.getHidePhone(), request.getHideEmail(), request.getNotificationsEnabled()));
+    }
+
     // POST /api/persons/check-contacts
     @PostMapping("/check-contacts")
     public ResponseEntity<List<java.util.Map<String, Object>>> checkBatchContacts(@RequestBody List<String> phoneNumbers) {

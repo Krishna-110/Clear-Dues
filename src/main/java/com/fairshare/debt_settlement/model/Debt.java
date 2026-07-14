@@ -40,6 +40,12 @@ public class Debt {
 
     private String note;
 
+    // Optional group this debt is tagged to (for per-group views). The settlement engine stays
+    // global and ignores this; it is metadata only.
+    @ManyToOne
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties({"members", "owner"})
+    private Group group;
+
     // Soft-delete audit trail: a deleted debt keeps its row so a mistake is visible/recoverable.
     private java.time.LocalDateTime deletedAt;
     private String deletedBy;

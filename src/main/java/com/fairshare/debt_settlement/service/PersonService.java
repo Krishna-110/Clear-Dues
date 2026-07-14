@@ -211,12 +211,44 @@ public class PersonService {
         return personRepository.save(currentUser);
     }
 
+    // Update the current user's own profile (name, phone, privacy + notification prefs).
+    @org.springframework.transaction.annotation.Transactional
+    public Person updateMyProfile(String name, String phone, Boolean hidePhone, Boolean hideEmail,
+                                  Boolean notificationsEnabled) {
+        Person me = getCurrentUser();
+        if (name != null && !name.isBlank()) me.setName(name.trim());
+        if (hidePhone != null) me.setHidePhone(hidePhone);
+        if (hideEmail != null) me.setHideEmail(hideEmail);
+        if (notificationsEnabled != null) me.setNotificationsEnabled(notificationsEnabled);
+        if (phone != null && !phone.isBlank()) {
+            String normalized = normalizePhoneNumber(phone);
+            if (normalized != null && !normalized.equals(me.getPhoneNumber())) {
+                updateMyPhone(phone); // reuse the robust phone-change/merge logic (same managed entity)
+            }
+        }
+        return personRepository.save(me);
+    }
+
     public List<Person> getAllPersons() {
         Person currentUser = getCurrentUser();
         // Exclude the current user themselves if they happen to be in the set
         List<Person> friends = new ArrayList<>(currentUser.getFriends());
         friends.removeIf(p -> p.getId().equals(currentUser.getId()));
-        return friends;
+        // Return masked COPIES so a friend's hidden phone/email is never exposed to others.
+        // (Copies, not managed entities, so nothing is accidentally persisted.)
+        List<Person> masked = new ArrayList<>();
+        for (Person p : friends) masked.add(maskedCopy(p));
+        return masked;
+    }
+
+    private Person maskedCopy(Person p) {
+        Person copy = new Person();
+        copy.setId(p.getId());
+        copy.setName(p.getName());
+        copy.setPictureUrl(p.getPictureUrl());
+        copy.setEmail(p.isHideEmail() ? null : p.getEmail());
+        copy.setPhoneNumber(p.isHidePhone() ? null : p.getPhoneNumber());
+        return copy;
     }
 
     public void deletePerson(Long friendId) {

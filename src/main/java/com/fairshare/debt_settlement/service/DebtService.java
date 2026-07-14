@@ -4,6 +4,7 @@ import com.fairshare.debt_settlement.dto.CreateDebtRequest;
 import com.fairshare.debt_settlement.model.Debt;
 import com.fairshare.debt_settlement.model.Person;
 import com.fairshare.debt_settlement.repository.DebtRepository;
+import com.fairshare.debt_settlement.repository.GroupRepository;
 import com.fairshare.debt_settlement.repository.PersonRepository;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -19,6 +20,7 @@ public class DebtService {
     private final DebtRepository debtRepository;
     private final SmsService smsService;
     private final NotificationService notificationService;
+    private final GroupRepository groupRepository;
 
     /**
      * Records a debt. A debt you record against SOMEONE ELSE starts UNCONFIRMED and must be
@@ -28,13 +30,8 @@ public class DebtService {
      */
     @org.springframework.transaction.annotation.Transactional
     public Debt createDebt(CreateDebtRequest request, String currentUserEmail) {
-        String debtorPhone = normalizePhone(request.getDebtorPhone());
-        String creditorPhone = normalizePhone(request.getCreditorPhone());
-
-        Person debtor = personRepository.findByPhoneNumber(debtorPhone)
-                .orElseThrow(() -> new RuntimeException("Debtor not found with phone: " + request.getDebtorPhone()));
-        Person creditor = personRepository.findByPhoneNumber(creditorPhone)
-                .orElseThrow(() -> new RuntimeException("Creditor not found with phone: " + request.getCreditorPhone()));
+        Person debtor = resolvePerson(request.getDebtorId(), request.getDebtorPhone(), "Debtor");
+        Person creditor = resolvePerson(request.getCreditorId(), request.getCreditorPhone(), "Creditor");
 
         // A user may only record a transaction they are part of (as debtor or creditor); you cannot
         // create a debt between two other people. The app UI also forces one side to be the logged-in
@@ -51,6 +48,9 @@ public class DebtService {
         debt.setCreditor(creditor);
         debt.setAmount(request.getAmount());
         debt.setNote(request.getNote());
+        if (request.getGroupId() != null) {
+            debt.setGroup(groupRepository.findById(request.getGroupId()).orElse(null));
+        }
 
         boolean recordedByDebtor = currentUserEmail != null
                 && debtor.getEmail() != null
@@ -373,6 +373,17 @@ public class DebtService {
         debt.setAmount(request.getAmount());
 
         return debtRepository.save(debt);
+    }
+
+    // Resolve a person by id when given (used when their phone is hidden), else by phone.
+    private Person resolvePerson(Long id, String phone, String role) {
+        if (id != null) {
+            return personRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException(role + " not found with id: " + id));
+        }
+        String normalized = normalizePhone(phone);
+        return personRepository.findByPhoneNumber(normalized)
+                .orElseThrow(() -> new RuntimeException(role + " not found with phone: " + phone));
     }
 
     private String normalizePhone(String phone) {

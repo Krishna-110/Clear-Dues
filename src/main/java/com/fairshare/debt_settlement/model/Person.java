@@ -23,6 +23,19 @@ public class Person {
     @Column(unique = true)
     private String phoneNumber;
 
+    // Profile picture (from Google on login).
+    private String pictureUrl;
+
+    // Privacy + notification preferences.
+    @Column(nullable = false)
+    private boolean hidePhone = false;
+
+    @Column(nullable = false)
+    private boolean hideEmail = false;
+
+    @Column(nullable = false)
+    private boolean notificationsEnabled = true;
+
     @ManyToMany
     @JoinTable(
         name = "person_friends",
