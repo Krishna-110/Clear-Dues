@@ -6,6 +6,7 @@ import { useNavigation } from '@react-navigation/native';
 import { ChevronRight, Check } from 'lucide-react-native';
 import Logo from '../components/Logo';
 import TermsModal from '../components/TermsModal';
+import PrivacyModal from '../components/PrivacyModal';
 import termsStorage from '../utils/termsStorage';
 import * as WebBrowserInstance from 'expo-web-browser';
 import * as Linking from 'expo-linking';
@@ -23,6 +24,7 @@ const LandingScreen = () => {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [termsModalVisible, setTermsModalVisible] = useState(false);
+  const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
 
   // Animations
   const blob1Anim = useRef(new Animated.Value(0)).current;
@@ -165,6 +167,10 @@ const LandingScreen = () => {
                 <Text style={styles.termsLink} onPress={() => setTermsModalVisible(true)}>
                   Terms & Conditions
                 </Text>
+                {' '}and{' '}
+                <Text style={styles.termsLink} onPress={() => setPrivacyModalVisible(true)}>
+                  Privacy Policy
+                </Text>
               </Text>
             </TouchableOpacity>
 
@@ -198,6 +204,7 @@ const LandingScreen = () => {
       </View>
 
       <TermsModal visible={termsModalVisible} onClose={() => setTermsModalVisible(false)} />
+      <PrivacyModal visible={privacyModalVisible} onClose={() => setPrivacyModalVisible(false)} />
     </SafeAreaView>
   );
 };
