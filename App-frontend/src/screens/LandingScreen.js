@@ -3,8 +3,10 @@ import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions, Animated, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Theme } from '../theme/Theme';
 import { useNavigation } from '@react-navigation/native';
-import { ChevronRight } from 'lucide-react-native';
+import { ChevronRight, Check } from 'lucide-react-native';
 import Logo from '../components/Logo';
+import TermsModal from '../components/TermsModal';
+import termsStorage from '../utils/termsStorage';
 import * as WebBrowserInstance from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import apiService from '../services/apiService';
@@ -19,6 +21,8 @@ const LandingScreen = () => {
   const navigation = useNavigation();
   const { setAuthenticated, checkAuth, isAuthenticated } = useStore();
   const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [termsModalVisible, setTermsModalVisible] = useState(false);
 
   // Animations
   const blob1Anim = useRef(new Animated.Value(0)).current;
@@ -29,7 +33,10 @@ const LandingScreen = () => {
   useEffect(() => {
     // Check if already authenticated on mount
     checkAuth();
-    
+    // Restore any previously-given Terms & Conditions acceptance, so returning users
+    // aren't forced to re-check the box every time they land here.
+    termsStorage.getAccepted().then(setTermsAccepted);
+
     // Content entrance
     Animated.parallel([
       Animated.timing(contentFade, {
@@ -73,9 +80,15 @@ const LandingScreen = () => {
     }
   }, [isAuthenticated]);
 
+  const toggleTermsAccepted = () => {
+    const next = !termsAccepted;
+    setTermsAccepted(next);
+    termsStorage.setAccepted(next);
+  };
+
   const handleGetStarted = async () => {
-    if (isAuthenticating) return;
-    
+    if (isAuthenticating || !termsAccepted) return;
+
     setIsAuthenticating(true);
     const authUrl = apiService.getAuthUrl();
     // Must match EXACTLY the deep link the backend redirects to
@@ -143,15 +156,27 @@ const LandingScreen = () => {
           </View>
 
           <View style={styles.buttonWrapper}>
-            <TouchableOpacity 
+            <TouchableOpacity style={styles.termsRow} onPress={toggleTermsAccepted} activeOpacity={0.7}>
+              <View style={[styles.checkbox, termsAccepted && styles.checkboxChecked]}>
+                {termsAccepted && <Check size={14} color={Theme.colors.white} strokeWidth={3} />}
+              </View>
+              <Text style={styles.termsText}>
+                I agree to the{' '}
+                <Text style={styles.termsLink} onPress={() => setTermsModalVisible(true)}>
+                  Terms & Conditions
+                </Text>
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
               activeOpacity={0.9}
               style={[
-                styles.button, 
+                styles.button,
                 Theme.shadow.medium,
-                isAuthenticating && { opacity: 0.7 }
+                (isAuthenticating || !termsAccepted) && { opacity: 0.5 }
               ]}
               onPress={handleGetStarted}
-              disabled={isAuthenticating}
+              disabled={isAuthenticating || !termsAccepted}
             >
               <Text style={styles.buttonText}>
                 {isAuthenticating ? 'Authenticating...' : 'Get Started'}
@@ -171,6 +196,8 @@ const LandingScreen = () => {
       <View style={styles.footer}>
         <Text style={styles.footerText}>MODERN • SECURE • SIMPLE</Text>
       </View>
+
+      <TermsModal visible={termsModalVisible} onClose={() => setTermsModalVisible(false)} />
     </SafeAreaView>
   );
 };
@@ -262,6 +289,35 @@ const styles = StyleSheet.create({
   buttonWrapper: {
     width: '100%',
     paddingHorizontal: Theme.spacing.md,
+  },
+  termsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Theme.spacing.md,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: Theme.colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  checkboxChecked: {
+    backgroundColor: Theme.colors.primary,
+    borderColor: Theme.colors.primary,
+  },
+  termsText: {
+    fontSize: 13,
+    color: Theme.colors.textSecondary,
+  },
+  termsLink: {
+    color: Theme.colors.primary,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
   },
   button: {
     backgroundColor: Theme.colors.text,
