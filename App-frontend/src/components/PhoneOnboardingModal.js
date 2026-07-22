@@ -50,6 +50,7 @@ const PhoneOnboardingModal = ({ visible, onComplete }) => {
                 <TextInput
                   style={styles.input}
                   placeholder="9876543210"
+                  placeholderTextColor={Theme.colors.textSecondary}
                   keyboardType="phone-pad"
                   maxLength={10}
                   value={phoneNumber}
