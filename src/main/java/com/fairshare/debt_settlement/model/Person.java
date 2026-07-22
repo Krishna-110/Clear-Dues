@@ -2,12 +2,17 @@ package com.fairshare.debt_settlement.model;
 
 import jakarta.persistence.*;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.ColumnDefault;
 
 @Entity
 @Table(name = "persons")
 @Data
+// Identity is by id only: mutable fields (phoneNumber, hidePhone, ...) must never affect
+// equals/hashCode, or mutating a Person already stored in a HashSet<Person> (friends, group
+// members) can silently corrupt that set's lookups.
+@EqualsAndHashCode(of = "id")
 @NoArgsConstructor
 public class Person {
 
@@ -50,7 +55,6 @@ public class Person {
         inverseJoinColumns = @JoinColumn(name = "friend_id")
     )
     @com.fasterxml.jackson.annotation.JsonIgnore
-    @lombok.EqualsAndHashCode.Exclude
     @lombok.ToString.Exclude
     private java.util.Set<Person> friends = new java.util.HashSet<>();
 

@@ -2,6 +2,8 @@ package com.fairshare.debt_settlement.exception;
 
 import com.fairshare.debt_settlement.dto.ErrorResponse;
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -12,6 +14,8 @@ import java.time.LocalDateTime;
 
 @RestControllerAdvice // Tells Spring: "Hey, use this class to intercept all errors globally!"
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     /**
      * This catches the specific exceptions we threw in DebtService
@@ -42,7 +46,7 @@ public class GlobalExceptionHandler {
             Exception ex,
             HttpServletRequest request) {
 
-        ex.printStackTrace();
+        log.error("Unhandled exception at {}", request.getRequestURI(), ex);
 
         ErrorResponse errorResponse = new ErrorResponse(
                 LocalDateTime.now(),
@@ -51,8 +55,6 @@ public class GlobalExceptionHandler {
                 "An unexpected error occurred. Please try again later.",
                 request.getRequestURI()
         );
-
-        // You would typically log the actual ex.getMessage() here using a Logger so you can debug it later!
 
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
     }

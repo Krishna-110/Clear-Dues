@@ -3,7 +3,9 @@ package com.fairshare.debt_settlement.service;
 import com.fairshare.debt_settlement.dto.CreatePersonRequest;
 import com.fairshare.debt_settlement.model.Person;
 import com.fairshare.debt_settlement.model.Debt;
+import com.fairshare.debt_settlement.model.Group;
 import com.fairshare.debt_settlement.repository.DebtRepository;
+import com.fairshare.debt_settlement.repository.GroupRepository;
 import com.fairshare.debt_settlement.repository.PersonRepository;
 import lombok.AllArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -20,6 +22,7 @@ public class PersonService {
 
     public final PersonRepository personRepository;
     public final DebtRepository debtRepository;
+    public final GroupRepository groupRepository;
 
     private Person getCurrentUser() {
         Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -30,7 +33,7 @@ public class PersonService {
             email = principal.toString();
         }
         return personRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User profile not found in database"));
+                .orElseThrow(() -> new IllegalArgumentException("User profile not found in database"));
     }
 
     @org.springframework.transaction.annotation.Transactional
@@ -162,7 +165,7 @@ public class PersonService {
         Person currentUser = getCurrentUser();
         String normalized = normalizePhoneNumber(phone);
         if (normalized == null || normalized.length() != 10) {
-            throw new RuntimeException("Invalid phone number format. Please enter 10 digits.");
+            throw new IllegalArgumentException("Invalid phone number format. Please enter 10 digits.");
         }
 
         // Check if there is another person with this phone number
@@ -197,12 +200,15 @@ public class PersonService {
                     
                     debtRepository.flush();
 
-                    // 3. Delete the proxy person
+                    // 3. Delete the proxy person (group memberships/ownership first - Group has no
+                    // cascade-delete on its Person references, so this must run before the delete
+                    // or Postgres would reject it with a foreign-key violation)
+                    reassignGroupMemberships(existingPerson, currentUser);
                     personRepository.removeAllFriendships(existingPerson.getId());
                     personRepository.delete(existingPerson);
                     personRepository.flush();
                 } else {
-                    throw new RuntimeException("This phone number is already registered by another user.");
+                    throw new IllegalArgumentException("This phone number is already registered by another user.");
                 }
             }
         }
@@ -255,7 +261,7 @@ public class PersonService {
         if (friendId == null) throw new IllegalArgumentException("Friend ID must not be null");
         Person currentUser = getCurrentUser();
         Person friendToDelete = personRepository.findById(friendId)
-                .orElseThrow(() -> new RuntimeException("Person not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Person not found"));
 
         // 1. Remove mutual friendship
         currentUser.getFriends().remove(friendToDelete);
@@ -267,10 +273,24 @@ public class PersonService {
 
         // 3. If the user is an offline proxy user, we delete them entirely
         if (friendToDelete.getEmail().endsWith("@cleardues.local")) {
+            reassignGroupMemberships(friendToDelete, currentUser);
             personRepository.removeAllFriendships(friendToDelete.getId());
             personRepository.delete(friendToDelete);
         } else {
             personRepository.save(friendToDelete);
+        }
+    }
+
+    // Before deleting a placeholder person, hand off any group they belong to (or own) so
+    // deleting them never violates a foreign-key constraint on Group.owner/Group.members.
+    private void reassignGroupMemberships(Person placeholder, Person newOwner) {
+        for (Group g : groupRepository.findByMembers_Id(placeholder.getId())) {
+            g.getMembers().remove(placeholder);
+            if (g.getOwner() != null && g.getOwner().getId().equals(placeholder.getId())) {
+                g.setOwner(newOwner);
+                g.getMembers().add(newOwner);
+            }
+            groupRepository.save(g);
         }
     }
 }

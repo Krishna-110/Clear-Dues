@@ -21,7 +21,7 @@ const PhoneOnboardingModal = ({ visible, onComplete }) => {
       await updateProfilePhone(cleaned);
       onComplete();
     } catch (error) {
-      Alert.alert('Error', error.toString() || 'Failed to update phone number.');
+      Alert.alert('Error', error.response?.data?.message || error.message || 'Failed to update phone number.');
     } finally {
       setIsSubmitting(false);
     }

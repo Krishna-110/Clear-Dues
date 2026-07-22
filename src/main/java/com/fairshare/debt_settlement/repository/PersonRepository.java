@@ -17,7 +17,7 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
 
     java.util.List<Person> findAllByPhoneNumberIn(java.util.Collection<String> phoneNumbers);
 
-    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true)
     @org.springframework.data.jpa.repository.Query(value = "DELETE FROM person_friends WHERE person_id = :personId OR friend_id = :personId", nativeQuery = true)
     void removeAllFriendships(@org.springframework.data.repository.query.Param("personId") Long personId);
 
