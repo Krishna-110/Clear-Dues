@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Modal, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Modal, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStore } from '../store/useStore';
 import { Theme } from '../theme/Theme';
@@ -157,7 +157,7 @@ const ManagePersonsScreen = () => {
     }
   };
 
-  const confirmDelete = (id, name) => {
+  const confirmDelete = (id, name, phoneNumber) => {
     if (!id) return;
     Alert.alert(
       'Remove Friend',
@@ -166,10 +166,12 @@ const ManagePersonsScreen = () => {
         { text: 'Cancel', style: 'cancel' },
         { text: 'Remove', style: 'destructive', onPress: async () => {
              await deletePerson(id);
-             setDeviceContacts(prev => prev.map(c => 
-               c.backendName === name ? { ...c, isFriend: false } : c
+             // Match by phone (a stable identifier), not display name - a friend can be added
+             // under a custom name different from their real account name.
+             setDeviceContacts(prev => prev.map(c =>
+               c.phoneNumber === phoneNumber ? { ...c, isFriend: false } : c
              ));
-          } 
+          }
         }
       ]
     );
@@ -276,7 +278,7 @@ const ManagePersonsScreen = () => {
             </View>
             
             {viewMode === 'friends' ? (
-              <TouchableOpacity onPress={() => confirmDelete(item?.id, item?.name)}>
+              <TouchableOpacity onPress={() => confirmDelete(item?.id, item?.name, item?.phoneNumber)}>
                 <Trash2 size={20} color={Theme.colors.danger} opacity={0.7} />
               </TouchableOpacity>
             ) : (

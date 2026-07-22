@@ -25,7 +25,7 @@ public class GamificationService {
 
     public GamificationResponse forUser(String email) {
         Person user = personRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found: " + email));
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + email));
 
         List<Debt> myDebts = debtRepository.findAllTransactionsForUser(user.getId());
 

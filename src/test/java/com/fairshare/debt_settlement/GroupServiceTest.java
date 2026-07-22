@@ -2,6 +2,7 @@ package com.fairshare.debt_settlement;
 
 import com.fairshare.debt_settlement.model.Group;
 import com.fairshare.debt_settlement.model.Person;
+import com.fairshare.debt_settlement.repository.DebtRepository;
 import com.fairshare.debt_settlement.repository.GroupRepository;
 import com.fairshare.debt_settlement.repository.PersonRepository;
 import com.fairshare.debt_settlement.service.GroupService;
@@ -21,6 +22,7 @@ class GroupServiceTest {
 
     private GroupRepository groupRepository;
     private PersonRepository personRepository;
+    private DebtRepository debtRepository;
     private GroupService groupService;
 
     private Person owner;
@@ -29,7 +31,8 @@ class GroupServiceTest {
     void setup() {
         groupRepository = mock(GroupRepository.class);
         personRepository = mock(PersonRepository.class);
-        groupService = new GroupService(groupRepository, personRepository);
+        debtRepository = mock(DebtRepository.class);
+        groupService = new GroupService(groupRepository, personRepository, debtRepository);
 
         owner = person(1L, "Owner", "owner@x.com");
         when(personRepository.findByEmail("owner@x.com")).thenReturn(Optional.of(owner));
@@ -80,7 +83,7 @@ class GroupServiceTest {
     }
 
     @Test
-    void leave_lastMemberDeletesTheGroup() {
+    void leave_lastMemberDeletesTheGroupAndClearsTaggedDebts() {
         Group g = new Group();
         g.setId(10L);
         g.getMembers().add(owner);
@@ -88,7 +91,43 @@ class GroupServiceTest {
 
         groupService.leave(10L, "owner@x.com");
 
+        verify(debtRepository).clearGroupReferences(10L);
         verify(groupRepository).delete(g);
+    }
+
+    @Test
+    void leave_ownerLeavesButOthersRemain_reassignsOwnership() {
+        Person otherMember = person(2L, "Other", "other@x.com");
+        Group g = new Group();
+        g.setId(10L);
+        g.setOwner(owner);
+        g.getMembers().add(owner);
+        g.getMembers().add(otherMember);
+        when(groupRepository.findById(10L)).thenReturn(Optional.of(g));
+
+        groupService.leave(10L, "owner@x.com");
+
+        assertThat(g.getMembers()).doesNotContain(owner);
+        assertThat(g.getOwner()).isEqualTo(otherMember); // ownership reassigned, not left dangling
+        verify(groupRepository).save(g);
+        verify(groupRepository, never()).delete(any());
+    }
+
+    @Test
+    void leave_nonOwnerMemberLeaves_ownershipUnchanged() {
+        Person otherMember = person(2L, "Other", "other@x.com");
+        Group g = new Group();
+        g.setId(10L);
+        g.setOwner(owner);
+        g.getMembers().add(owner);
+        g.getMembers().add(otherMember);
+        when(personRepository.findByEmail("other@x.com")).thenReturn(Optional.of(otherMember));
+        when(groupRepository.findById(10L)).thenReturn(Optional.of(g));
+
+        groupService.leave(10L, "other@x.com");
+
+        assertThat(g.getMembers()).containsExactly(owner);
+        assertThat(g.getOwner()).isEqualTo(owner);
     }
 
     @Test

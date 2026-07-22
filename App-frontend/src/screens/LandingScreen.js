@@ -115,8 +115,10 @@ const LandingScreen = () => {
     try {
       const { queryParams } = Linking.parse(url);
       if (queryParams && queryParams.token) {
+        // No explicit navigate here: setAuthenticated is async, so 'Main' isn't registered in the
+        // Stack yet at this point. The isAuthenticated-watching useEffect above navigates once the
+        // store (and therefore the Stack) has actually updated.
         setAuthenticated(queryParams.token);
-        navigation.navigate('Main');
       }
     } catch (err) {
       console.error('Redirect parse error', err);

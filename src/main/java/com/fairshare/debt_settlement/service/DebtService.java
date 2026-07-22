@@ -87,11 +87,11 @@ public class DebtService {
     @org.springframework.transaction.annotation.Transactional
     public Debt acceptDebt(Long debtId, String userEmail) {
         Debt debt = debtRepository.findById(debtId)
-                .orElseThrow(() -> new RuntimeException("Debt not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Debt not found"));
 
         if (debt.getDebtor() == null || debt.getDebtor().getEmail() == null
                 || !debt.getDebtor().getEmail().equalsIgnoreCase(userEmail)) {
-            throw new RuntimeException("Unauthorized: You are not the debtor.");
+            throw new IllegalArgumentException("Unauthorized: You are not the debtor.");
         }
         if (!"UNCONFIRMED".equals(debt.getStatus())) {
             return debt; // already accepted/declined/settled - nothing to do
@@ -116,11 +116,11 @@ public class DebtService {
     @org.springframework.transaction.annotation.Transactional
     public Debt declineDebt(Long debtId, String userEmail) {
         Debt debt = debtRepository.findById(debtId)
-                .orElseThrow(() -> new RuntimeException("Debt not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Debt not found"));
 
         if (debt.getDebtor() == null || debt.getDebtor().getEmail() == null
                 || !debt.getDebtor().getEmail().equalsIgnoreCase(userEmail)) {
-            throw new RuntimeException("Unauthorized: You are not the debtor.");
+            throw new IllegalArgumentException("Unauthorized: You are not the debtor.");
         }
         if (!"UNCONFIRMED".equals(debt.getStatus())) {
             return debt; // only a pending proposal can be declined
@@ -352,7 +352,7 @@ public class DebtService {
     public Debt updateDebt(Long id, CreateDebtRequest request) {
         if (id == null) throw new IllegalArgumentException("ID must not be null");
         Debt debt = debtRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Debt record not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Debt record not found"));
 
         // Only an active (PENDING) transaction can be edited. Settled / declined / deleted rows are
         // historical and must stay immutable.
@@ -364,9 +364,9 @@ public class DebtService {
         String creditorPhone = normalizePhone(request.getCreditorPhone());
 
         Person debtor = personRepository.findByPhoneNumber(debtorPhone)
-                .orElseThrow(() -> new RuntimeException("Debtor not found with phone: " + request.getDebtorPhone()));
+                .orElseThrow(() -> new IllegalArgumentException("Debtor not found with phone: " + request.getDebtorPhone()));
         Person creditor = personRepository.findByPhoneNumber(creditorPhone)
-                .orElseThrow(() -> new RuntimeException("Creditor not found with phone: " + request.getCreditorPhone()));
+                .orElseThrow(() -> new IllegalArgumentException("Creditor not found with phone: " + request.getCreditorPhone()));
 
         debt.setDebtor(debtor);
         debt.setCreditor(creditor);
@@ -379,11 +379,11 @@ public class DebtService {
     private Person resolvePerson(Long id, String phone, String role) {
         if (id != null) {
             return personRepository.findById(id)
-                    .orElseThrow(() -> new RuntimeException(role + " not found with id: " + id));
+                    .orElseThrow(() -> new IllegalArgumentException(role + " not found with id: " + id));
         }
         String normalized = normalizePhone(phone);
         return personRepository.findByPhoneNumber(normalized)
-                .orElseThrow(() -> new RuntimeException(role + " not found with phone: " + phone));
+                .orElseThrow(() -> new IllegalArgumentException(role + " not found with phone: " + phone));
     }
 
     private String normalizePhone(String phone) {
@@ -404,9 +404,9 @@ public class DebtService {
     public void deleteDebt(Long id, String userEmail) {
         if (id == null) throw new IllegalArgumentException("ID must not be null");
         Debt debt = debtRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Debt not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Debt not found"));
         if (!isParty(debt, userEmail)) {
-            throw new RuntimeException("Unauthorized: you are not a party to this debt.");
+            throw new IllegalArgumentException("Unauthorized: you are not a party to this debt.");
         }
         if ("DELETED".equals(debt.getStatus())) return;
 
@@ -431,9 +431,9 @@ public class DebtService {
     @org.springframework.transaction.annotation.Transactional
     public Debt restoreDebt(Long id, String userEmail) {
         Debt debt = debtRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Debt not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Debt not found"));
         if (!isParty(debt, userEmail)) {
-            throw new RuntimeException("Unauthorized: you are not a party to this debt.");
+            throw new IllegalArgumentException("Unauthorized: you are not a party to this debt.");
         }
         if (!"DELETED".equals(debt.getStatus())) return debt;
 

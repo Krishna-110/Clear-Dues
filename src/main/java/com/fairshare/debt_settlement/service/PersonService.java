@@ -111,6 +111,10 @@ public class PersonService {
     }
 
     private void establishMutualFriendship(Person a, Person b) {
+        // Both must already be persisted (non-null id): Person's equals/hashCode is id-based, so
+        // adding a not-yet-saved entity into a HashSet<Person> (friends) would silently misbehave.
+        java.util.Objects.requireNonNull(a.getId(), "person a must be persisted before befriending");
+        java.util.Objects.requireNonNull(b.getId(), "person b must be persisted before befriending");
         if (a.getId().equals(b.getId())) return;
         
         boolean alreadyFriends = a.getFriends().stream()
@@ -257,6 +261,7 @@ public class PersonService {
         return copy;
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public void deletePerson(Long friendId) {
         if (friendId == null) throw new IllegalArgumentException("Friend ID must not be null");
         Person currentUser = getCurrentUser();

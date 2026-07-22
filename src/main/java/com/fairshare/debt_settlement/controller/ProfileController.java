@@ -27,6 +27,6 @@ public class ProfileController {
         }
 
         return personRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User profile not found in database"));
+                .orElseThrow(() -> new IllegalArgumentException("User profile not found in database"));
     }
 }

@@ -47,32 +47,33 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // 3. Extract the JWT (Remove the first 7 characters: "Bearer ")
         jwt = authHeader.substring(7);
 
-        // 4. Ask our JwtService to extract the email from the token
-        userEmail = jwtService.extractUsername(jwt);
+        // 4-8. Parsing/validating the token can throw (expired, malformed, tampered - every user
+        // eventually sends an expired token) and loadUserByUsername throws if the token's email no
+        // longer maps to an account. This runs inside the servlet filter chain, BEFORE
+        // DispatcherServlet/@RestControllerAdvice ever sees the request, so GlobalExceptionHandler
+        // can never catch it here - an uncaught exception would escape as a raw container error
+        // instead of a clean 401. Treat any failure as "just not authenticated" and move on; Spring
+        // Security's normal authorization step then returns a proper 401/403 for a protected endpoint.
+        try {
+            userEmail = jwtService.extractUsername(jwt);
 
-        // 5. If we found an email AND the user isn't already authenticated in this session...
-        if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
 
-            // Fetch the user from the database
-            UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
-
-            // 6. Check if the wristband is mathematically valid and not expired
-            if (jwtService.isTokenValid(jwt, userDetails.getUsername())) {
-
-                // 7. The token is good! Create an authentication token
-                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                        userDetails,
-                        null,
-                        userDetails.getAuthorities()
-                );
-
-                // Add extra details like the user's IP address and session info
-                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-
-                // 8. Put the authentication token into the SecurityContext (The VIP Lounge)
-                // Now Spring knows EXACTLY who this user is for the rest of the request!
-                SecurityContextHolder.getContext().setAuthentication(authToken);
+                if (jwtService.isTokenValid(jwt, userDetails.getUsername())) {
+                    UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                            userDetails,
+                            null,
+                            userDetails.getAuthorities()
+                    );
+                    authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    SecurityContextHolder.getContext().setAuthentication(authToken);
+                }
             }
+        } catch (RuntimeException e) {
+            // Expired/malformed/tampered token, or the account no longer exists - request continues
+            // unauthenticated; Spring Security handles the resulting 401/403 normally.
+            SecurityContextHolder.clearContext();
         }
 
         // 9. Continue the filter chain so the request can hit the Controller

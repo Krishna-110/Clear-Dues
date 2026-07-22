@@ -74,19 +74,4 @@ public class PersonController {
     public ResponseEntity<List<Person>> syncBatchContacts(@RequestBody List<CreatePersonRequest> contacts) {
         return ResponseEntity.ok(personService.syncContactsBatch(contacts));
     }
-
-    // GET /api/persons/profile (Utility to check current user state)
-    @GetMapping("/profile")
-    public ResponseEntity<Person> getProfile() {
-        // getCurrentUser is private in service, but we can access it via Repository if needed
-        // Or better, add a getProfile method to service
-        Object principal = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        String email;
-        if (principal instanceof org.springframework.security.core.userdetails.UserDetails) {
-            email = ((org.springframework.security.core.userdetails.UserDetails) principal).getUsername();
-        } else {
-            email = principal.toString();
-        }
-        return ResponseEntity.ok(personService.personRepository.findByEmail(email).orElseThrow());
-    }
 }

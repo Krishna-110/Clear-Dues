@@ -31,4 +31,11 @@ public interface DebtRepository extends JpaRepository<Debt, Long> {
     @org.springframework.transaction.annotation.Transactional
     @Query("DELETE FROM Debt d WHERE (d.debtor.id = :userA AND d.creditor.id = :userB) OR (d.debtor.id = :userB AND d.creditor.id = :userA)")
     void deleteMutualDebts(@Param("userA") Long userA, @Param("userB") Long userB);
+
+    // Debt.group is optional metadata with no cascade-delete; clear it before a Group is deleted
+    // so no debt is left pointing at a group that no longer exists.
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.transaction.annotation.Transactional
+    @Query("UPDATE Debt d SET d.group = null WHERE d.group.id = :groupId")
+    void clearGroupReferences(@Param("groupId") Long groupId);
 }

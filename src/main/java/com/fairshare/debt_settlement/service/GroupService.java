@@ -2,6 +2,7 @@ package com.fairshare.debt_settlement.service;
 
 import com.fairshare.debt_settlement.model.Group;
 import com.fairshare.debt_settlement.model.Person;
+import com.fairshare.debt_settlement.repository.DebtRepository;
 import com.fairshare.debt_settlement.repository.GroupRepository;
 import com.fairshare.debt_settlement.repository.PersonRepository;
 import lombok.AllArgsConstructor;
@@ -22,6 +23,7 @@ public class GroupService {
 
     private final GroupRepository groupRepository;
     private final PersonRepository personRepository;
+    private final DebtRepository debtRepository;
 
     @Transactional
     public Group create(String name, String ownerEmail) {
@@ -55,17 +57,28 @@ public class GroupService {
         Group group = groupRepository.findById(groupId)
                 .orElseThrow(() -> new IllegalArgumentException("Group not found."));
         Person user = requirePerson(userEmail);
+        boolean wasOwner = group.getOwner() != null && group.getOwner().getId().equals(user.getId());
         group.getMembers().removeIf(m -> m.getId().equals(user.getId()));
+
         if (group.getMembers().isEmpty()) {
-            groupRepository.delete(group); // last member out -> remove the empty group
-        } else {
-            groupRepository.save(group);
+            // Last member out - clear any debts tagged to this group first (Debt.group has no
+            // cascade-delete) so removing the now-empty group can't hit a foreign-key violation.
+            debtRepository.clearGroupReferences(group.getId());
+            groupRepository.delete(group);
+            return;
         }
+
+        if (wasOwner) {
+            // Keep the "owner is always a member" invariant, so any future placeholder-cleanup pass
+            // that looks up groups by membership can never miss an orphaned ownership reference.
+            group.setOwner(group.getMembers().iterator().next());
+        }
+        groupRepository.save(group);
     }
 
     private Person requirePerson(String email) {
         return personRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found: " + email));
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + email));
     }
 
     private String generateUniqueCode() {
